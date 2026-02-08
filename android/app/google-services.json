@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1050052724024",
+    "project_id": "webture-a80f6",
+    "storage_bucket": "webture-a80f6.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1050052724024:android:e0a9c4226df99c90b26dcd",
+        "android_client_info": {
+          "package_name": "com.example.wayture"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDwUVPl7z8MOy6xBJgBq6XGyejnQ3JPgxA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
