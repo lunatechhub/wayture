@@ -1,96 +1,56 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
+import 'package:wayture/config/constants.dart';
+import 'package:wayture/screens/signup_screen.dart';
+import 'package:wayture/screens/main_screen.dart';
+import 'package:wayture/services/auth_service.dart';
 
-import 'forgot_password_page.dart';
-import 'registerpage.dart';
-import 'analytics_page.dart';
-
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+/// Login screen with glassmorphism form card.
+class LoginScreen extends StatefulWidget {
+  const LoginScreen({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController passwordController = TextEditingController();
-
-  bool hidePassword = true;
-  bool rememberMe = false;
-  bool isLoading = false;
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  bool _hidePassword = true;
+  bool _rememberMe = false;
+  bool _isLoading = false;
 
   @override
   void dispose() {
-    emailController.dispose();
-    passwordController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
     super.dispose();
   }
 
-  Future<void> _loginUser() async {
+  Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => isLoading = true);
+    setState(() => _isLoading = true);
 
-    try {
-      await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: emailController.text.trim(),
-        password: passwordController.text.trim(),
-      );
+    final auth = context.read<AuthService>();
+    final error = await auth.signIn(
+      _emailController.text.trim(),
+      _passwordController.text.trim(),
+    );
 
-      if (!mounted) return;
+    if (!mounted) return;
+    setState(() => _isLoading = false);
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const AnalyticsPage()),
-      );
-    } on FirebaseAuthException catch (e) {
-      if (!mounted) return;
-
-      String errorMessage = _getErrorMessage(e.code);
-
+    if (error != null) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(errorMessage),
-          backgroundColor: Colors.red,
-          duration: const Duration(seconds: 4),
-        ),
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
       );
-
-      print("Firebase Auth Error: ${e.code} - ${e.message}");
-    } catch (e) {
-      if (!mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error: $e"), backgroundColor: Colors.red),
+    } else {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const MainScreen()),
       );
-
-      print("Unexpected error: $e");
-    } finally {
-      if (mounted) {
-        setState(() => isLoading = false);
-      }
-    }
-  }
-
-  String _getErrorMessage(String code) {
-    switch (code) {
-      case 'user-not-found':
-        return 'No account found with this email';
-      case 'wrong-password':
-        return 'Incorrect password';
-      case 'invalid-email':
-        return 'Invalid email address';
-      case 'user-disabled':
-        return 'This account has been disabled';
-      case 'too-many-requests':
-        return 'Too many login attempts. Try again later';
-      case 'network-request-failed':
-        return 'Network error. Check your connection';
-      case 'operation-not-allowed':
-        return 'Email/Password login is not enabled';
-      default:
-        return 'Login failed: $code';
     }
   }
 
@@ -99,12 +59,14 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       body: Stack(
         children: [
+          // Background image
           Image.asset(
-            'lib/app/assets/welcome.jpg',
+            AppConstants.backgroundImage,
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,
           ),
+          // Gradient overlay
           Container(
             decoration: BoxDecoration(
               gradient: LinearGradient(
@@ -117,6 +79,7 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
           ),
+          // Content
           SafeArea(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(20),
@@ -137,6 +100,7 @@ class _LoginPageState extends State<LoginPage> {
                     ),
                   ),
                   const SizedBox(height: 40),
+                  // Glassmorphism form card
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
@@ -148,47 +112,35 @@ class _LoginPageState extends State<LoginPage> {
                       child: Column(
                         children: [
                           TextFormField(
-                            controller: emailController,
+                            controller: _emailController,
                             keyboardType: TextInputType.emailAddress,
-                            enabled: !isLoading,
+                            enabled: !_isLoading,
                             style: const TextStyle(color: Colors.white),
                             decoration: _inputDecoration("Email"),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return "Email is required";
-                              }
-                              if (!value.contains("@")) {
-                                return "Enter valid email";
-                              }
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return "Email is required";
+                              if (!v.contains("@")) return "Enter valid email";
                               return null;
                             },
                           ),
                           const SizedBox(height: 12),
                           TextFormField(
-                            controller: passwordController,
-                            obscureText: hidePassword,
-                            enabled: !isLoading,
+                            controller: _passwordController,
+                            obscureText: _hidePassword,
+                            enabled: !_isLoading,
                             style: const TextStyle(color: Colors.white),
                             decoration: _inputDecoration("Password").copyWith(
                               suffixIcon: IconButton(
                                 icon: Icon(
-                                  hidePassword
-                                      ? Icons.visibility_off
-                                      : Icons.visibility,
+                                  _hidePassword ? Icons.visibility_off : Icons.visibility,
                                   color: Colors.white70,
                                 ),
-                                onPressed: () {
-                                  setState(() => hidePassword = !hidePassword);
-                                },
+                                onPressed: () => setState(() => _hidePassword = !_hidePassword),
                               ),
                             ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return "Password is required";
-                              }
-                              if (value.length < 6) {
-                                return "Minimum 6 characters";
-                              }
+                            validator: (v) {
+                              if (v == null || v.isEmpty) return "Password is required";
+                              if (v.length < 6) return "Minimum 6 characters";
                               return null;
                             },
                           ),
@@ -196,32 +148,17 @@ class _LoginPageState extends State<LoginPage> {
                           Row(
                             children: [
                               Checkbox(
-                                value: rememberMe,
-                                onChanged: !isLoading
-                                    ? (v) {
-                                        setState(() => rememberMe = v ?? false);
-                                      }
+                                value: _rememberMe,
+                                onChanged: !_isLoading
+                                    ? (v) => setState(() => _rememberMe = v ?? false)
                                     : null,
                                 checkColor: Colors.black,
                                 activeColor: Colors.white,
                               ),
-                              const Text(
-                                "Remember me",
-                                style: TextStyle(color: Colors.white),
-                              ),
+                              const Text("Remember me", style: TextStyle(color: Colors.white)),
                               const Spacer(),
                               TextButton(
-                                onPressed: !isLoading
-                                    ? () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const ForgotPasswordPage(),
-                                          ),
-                                        );
-                                      }
-                                    : null,
+                                onPressed: null,
                                 child: const Text(
                                   "Forgot Password?",
                                   style: TextStyle(color: Colors.white70),
@@ -240,17 +177,13 @@ class _LoginPageState extends State<LoginPage> {
                                   borderRadius: BorderRadius.circular(14),
                                 ),
                               ),
-                              onPressed: isLoading ? null : _loginUser,
-                              child: isLoading
+                              onPressed: _isLoading ? null : _login,
+                              child: _isLoading
                                   ? const SizedBox(
-                                      height: 24,
-                                      width: 24,
+                                      height: 24, width: 24,
                                       child: CircularProgressIndicator(
                                         strokeWidth: 2,
-                                        valueColor:
-                                            AlwaysStoppedAnimation<Color>(
-                                              Colors.black,
-                                            ),
+                                        valueColor: AlwaysStoppedAnimation<Color>(Colors.black),
                                       ),
                                     )
                                   : const Text(
@@ -264,15 +197,11 @@ class _LoginPageState extends State<LoginPage> {
                           ),
                           const SizedBox(height: 16),
                           TextButton(
-                            onPressed: !isLoading
-                                ? () {
-                                    Navigator.push(
+                            onPressed: !_isLoading
+                                ? () => Navigator.push(
                                       context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const RegisterPage(),
-                                      ),
-                                    );
-                                  }
+                                      MaterialPageRoute(builder: (_) => const SignupScreen()),
+                                    )
                                 : null,
                             child: const Text(
                               "Don't have an account? Sign up",
