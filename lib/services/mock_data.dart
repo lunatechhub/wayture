@@ -1,3 +1,4 @@
+import 'package:wayture/models/kathmandu_event.dart';
 import 'package:wayture/models/report_model.dart';
 import 'package:wayture/models/route_model.dart';
 import 'package:wayture/models/notification_model.dart';
@@ -133,6 +134,56 @@ class MockData {
       ),
     ];
   }
+
+  // ── Kathmandu Events ──
+  static List<KathmanduEvent> get kathmanduEvents {
+    final now = DateTime.now();
+    return [
+      KathmanduEvent(
+        name: 'Indra Jatra',
+        description:
+            'Annual festival with chariot processions through old city',
+        affectedAreas: ['Basantapur', 'Thamel', 'Durbar'],
+        date: now,
+        impactLevel: EventImpactLevel.high,
+        isActive: true,
+      ),
+      KathmanduEvent(
+        name: 'Nepal Bandh',
+        description: 'General strike affecting major intersections',
+        affectedAreas: ['Kalanki', 'Koteshwor', 'Maitighar'],
+        date: now,
+        impactLevel: EventImpactLevel.high,
+        isActive: false,
+      ),
+      KathmanduEvent(
+        name: 'Bike Rally',
+        description: 'Charity bike rally through Ring Road',
+        affectedAreas: ['Balaju', 'Maharajgunj', 'Chabahil'],
+        date: now.add(const Duration(days: 2)),
+        impactLevel: EventImpactLevel.medium,
+        isActive: false,
+      ),
+      KathmanduEvent(
+        name: 'Road Maintenance',
+        description: 'Scheduled road repair on Thapathali Bridge',
+        affectedAreas: ['Thapathali', 'Maitighar'],
+        date: now,
+        impactLevel: EventImpactLevel.low,
+        isActive: true,
+      ),
+    ];
+  }
+
+  // ── Peak Hour Ranges ──
+  static const peakHourRanges = {
+    'morningStart': 7.5, // 7:30 AM
+    'morningEnd': 9.5, // 9:30 AM
+    'eveningStart': 16.5, // 4:30 PM
+    'eveningEnd': 19.0, // 7:00 PM
+    'nightStart': 22.0, // 10:00 PM
+    'nightEnd': 6.0, // 6:00 AM
+  };
 
   // ── Traffic Polyline Data (lat/lng pairs for demo) ──
   // Green: Lazimpat → Thamel (light traffic)

@@ -1,8 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:wayture/config/theme.dart';
-import 'package:wayture/services/mock_data.dart';
+import 'package:wayture/models/route_model.dart';
+import 'package:wayture/services/route_service.dart';
+import 'package:wayture/widgets/route_alert_banner.dart';
 import 'package:wayture/widgets/route_card.dart';
+import 'package:wayture/widgets/route_history_section.dart';
+import 'package:wayture/widgets/route_map_preview.dart';
+import 'package:wayture/widgets/time_picker_row.dart';
 
 // ── Kathmandu location data ──────────────────────────────
 
@@ -62,6 +68,8 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
   bool _isLoading = false;
   bool _showResults = false;
   double _swapTurns = 0;
+  TimeOfDay? _departureTime;
+  List<RouteModel> _routes = [];
 
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
@@ -118,7 +126,14 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
     });
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (mounted) {
+        final routeService = context.read<RouteService>();
+        final routes = routeService.generateRoutes(
+          _fromLocation,
+          _toLocation!,
+          departureTime: _departureTime,
+        );
         setState(() {
+          _routes = routes;
           _isLoading = false;
           _showResults = true;
         });
@@ -179,9 +194,11 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
   // ── Form view (main) ─────────────────────────────────────
 
   Widget _buildFormView(ScrollController scrollController) {
-    final routes = MockData.routes;
+    final routeService = context.watch<RouteService>();
     final screenWidth = MediaQuery.of(context).size.width;
     final pad = screenWidth < 360 ? 12.0 : 20.0;
+    final activeAlerts = routeService.activeAlerts;
+    final todaysEvents = routeService.todaysEvents;
 
     return ListView(
       controller: scrollController,
@@ -207,6 +224,50 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
           ],
         ),
         const SizedBox(height: 24),
+
+        // Event awareness banner
+        if (todaysEvents.isNotEmpty)
+          ...todaysEvents.map((event) => Container(
+                margin: const EdgeInsets.only(bottom: 12),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFF9800).withAlpha(20),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: const Color(0xFFFF9800).withAlpha(60),
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(event.emoji, style: const TextStyle(fontSize: 20)),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '${event.name} today',
+                            style: const TextStyle(
+                              color: Color(0xFFFF9800),
+                              fontSize: 13,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${event.description} — expect delays near ${event.affectedAreas.join(", ")}',
+                            style: const TextStyle(
+                              color: Colors.white60,
+                              fontSize: 11,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              )),
 
         // From / To fields with route indicator & swap
         Row(
@@ -289,7 +350,18 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
             ),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
+
+        // Time picker row
+        TimePickerRow(
+          selectedTime: _departureTime,
+          onTimeChanged: (time) {
+            setState(() {
+              _departureTime = time;
+              _showResults = false;
+            });
+          },
+        ),
 
         // Find Routes button
         SizedBox(
@@ -322,13 +394,72 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
         ),
         const SizedBox(height: 20),
 
+        // Route history (shown when no results)
+        if (!_showResults && !_isLoading)
+          RouteHistorySection(
+            history: routeService.routeHistory,
+            favorites: routeService.favorites,
+            onItemTap: (from, to) {
+              setState(() {
+                _fromLocation = from;
+                _toLocation = to;
+                _showResults = false;
+              });
+              // Auto-search
+              Future.microtask(_findRoutes);
+            },
+            onToggleFavorite: (index) {
+              routeService.toggleFavorite(index);
+            },
+          ),
+
         // Loading shimmer
         if (_isLoading)
           ...List.generate(3, (_) => _shimmerCard()),
 
+        // Route alerts
+        if (_showResults && !_isLoading && activeAlerts.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: RouteAlertBanner(
+              alerts: activeAlerts,
+              onDismiss: (id) => routeService.dismissAlert(id),
+            ),
+          ),
+
+        // Route map preview
+        if (_showResults && !_isLoading && _routes.isNotEmpty)
+          RouteMapPreview(routes: _routes),
+
+        // Route results header
+        if (_showResults && !_isLoading && _routes.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Row(
+              children: [
+                const Text(
+                  'Available Routes',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  '${_routes.length} found',
+                  style: const TextStyle(
+                    color: Colors.white38,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
         // Route results (stagger animation)
         if (_showResults && !_isLoading)
-          ...List.generate(routes.length, (i) {
+          ...List.generate(_routes.length, (i) {
             return TweenAnimationBuilder<double>(
               key: ValueKey('route_$i'),
               tween: Tween(begin: 0, end: 1),
@@ -342,10 +473,25 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                 ),
               ),
               child: RouteCard(
-                route: routes[i],
+                route: _routes[i],
                 onNavigate: () {
+                  // Save to history
+                  routeService.addToHistory(
+                    _fromLocation,
+                    _toLocation!,
+                    _routes[i].name,
+                  );
                   Navigator.pop(context);
-                  widget.onNavigate(i, routes[i].name);
+                  widget.onNavigate(i, _routes[i].name);
+                },
+                onSave: () {
+                  // Quick-add to history as favorite
+                  routeService.addToHistory(
+                    _fromLocation,
+                    _toLocation!,
+                    _routes[i].name,
+                  );
+                  routeService.toggleFavorite(0); // Just added at index 0
                 },
               ),
             );

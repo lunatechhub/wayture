@@ -1,13 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/models/route_model.dart';
+import 'package:wayture/widgets/congestion_breakdown_card.dart';
 
 /// Dark-themed route option card for the route planning bottom sheet.
 class RouteCard extends StatelessWidget {
   final RouteModel route;
   final VoidCallback? onNavigate;
+  final VoidCallback? onSave;
+  final bool isFavorite;
 
-  const RouteCard({super.key, required this.route, this.onNavigate});
+  const RouteCard({
+    super.key,
+    required this.route,
+    this.onNavigate,
+    this.onSave,
+    this.isFavorite = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -29,7 +38,7 @@ class RouteCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Route name + recommended badge
+          // Route name + recommended badge + save button
           Row(
             children: [
               Expanded(
@@ -42,6 +51,46 @@ class RouteCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (route.alertCount > 0)
+                Container(
+                  margin: const EdgeInsets.only(right: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFF9800).withAlpha(40),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.warning_amber,
+                          color: Color(0xFFFF9800), size: 12),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${route.alertCount}',
+                        style: const TextStyle(
+                          color: Color(0xFFFF9800),
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              if (onSave != null)
+                GestureDetector(
+                  onTap: onSave,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 6),
+                    child: Icon(
+                      isFavorite ? Icons.star : Icons.star_border,
+                      color: isFavorite
+                          ? const Color(0xFFFFC107)
+                          : Colors.white38,
+                      size: 22,
+                    ),
+                  ),
+                ),
               if (route.isRecommended)
                 Container(
                   padding:
@@ -61,6 +110,45 @@ class RouteCard extends StatelessWidget {
                 ),
             ],
           ),
+
+          // Community trust score badge
+          if (route.communityTrustPercent > 0) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: (route.communityTrustPercent > 80
+                        ? const Color(0xFF4CAF50)
+                        : const Color(0xFFFFC107))
+                    .withAlpha(30),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.shield,
+                    size: 12,
+                    color: route.communityTrustPercent > 80
+                        ? const Color(0xFF4CAF50)
+                        : const Color(0xFFFFC107),
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${route.communityTrustPercent}% trusted',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                      color: route.communityTrustPercent > 80
+                          ? const Color(0xFF4CAF50)
+                          : const Color(0xFFFFC107),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
 
           // Duration and distance
@@ -139,6 +227,10 @@ class RouteCard extends StatelessWidget {
               ),
             ],
           ),
+
+          // Expandable congestion breakdown
+          if (route.congestionBreakdown != null)
+            CongestionBreakdownCard(breakdown: route.congestionBreakdown!),
         ],
       ),
     );

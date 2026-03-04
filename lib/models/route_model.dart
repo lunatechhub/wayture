@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:wayture/config/theme.dart';
+import 'package:wayture/models/congestion_factor.dart';
 
 enum TrafficLevel { light, moderate, heavy }
 
@@ -38,6 +39,9 @@ class RouteModel {
   final double distanceKm;
   final TrafficLevel trafficLevel;
   final bool isRecommended;
+  final CongestionBreakdown? congestionBreakdown;
+  final int communityTrustPercent;
+  final int alertCount;
 
   RouteModel({
     required this.id,
@@ -47,5 +51,8 @@ class RouteModel {
     required this.distanceKm,
     required this.trafficLevel,
     this.isRecommended = false,
+    this.congestionBreakdown,
+    this.communityTrustPercent = 0,
+    this.alertCount = 0,
   });
 }

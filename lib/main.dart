@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/screens/splash_screen.dart';
 import 'package:wayture/services/auth_service.dart';
+import 'package:wayture/services/route_service.dart';
 import 'package:wayture/services/theme_service.dart';
 
 void main() async {
@@ -29,6 +30,7 @@ class WaytureApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ThemeService()),
+        ChangeNotifierProvider(create: (_) => RouteService()),
       ],
       child: Consumer<ThemeService>(
         builder: (context, themeSvc, _) => MaterialApp(
