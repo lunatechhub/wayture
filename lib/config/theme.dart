@@ -13,7 +13,7 @@ class AppColors {
   static const Color trafficRed = Color(0xFFF44336);
 }
 
-/// Minimal app theme — most styling is done inline with glassmorphism
+/// App themes — light (sunset glassmorphism) and dark (AMOLED black).
 class AppTheme {
   AppTheme._();
 
@@ -26,6 +26,25 @@ class AppTheme {
       ),
       scaffoldBackgroundColor: Colors.transparent,
       textTheme: GoogleFonts.poppinsTextTheme(),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+    );
+  }
+
+  static ThemeData get darkTheme {
+    return ThemeData(
+      useMaterial3: true,
+      brightness: Brightness.dark,
+      colorScheme: ColorScheme.fromSeed(
+        seedColor: AppColors.primary,
+        primary: AppColors.primary,
+        brightness: Brightness.dark,
+        surface: const Color(0xFF0D0D1A),
+      ),
+      scaffoldBackgroundColor: const Color(0xFF0D0D1A),
+      textTheme: GoogleFonts.poppinsTextTheme(ThemeData.dark().textTheme),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

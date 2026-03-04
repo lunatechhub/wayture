@@ -33,6 +33,9 @@ dependencies:
   shimmer: ^3.0.0
   cached_network_image: ^3.3.0
 
+  # Image Picker
+  image_picker: ^1.0.7
+
   # Utilities
   intl: ^0.18.1
   http: ^1.1.0

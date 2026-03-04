@@ -71,7 +71,7 @@ class _SignupScreenState extends State<SignupScreen> {
         children: [
           // Background image
           Image.asset(
-            AppConstants.backgroundImage,
+            AppConstants.backgroundImage, 
             fit: BoxFit.cover,
             width: double.infinity,
             height: double.infinity,

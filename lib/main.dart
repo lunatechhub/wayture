@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/screens/splash_screen.dart';
 import 'package:wayture/services/auth_service.dart';
+import 'package:wayture/services/theme_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,12 +28,17 @@ class WaytureApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthService()),
+        ChangeNotifierProvider(create: (_) => ThemeService()),
       ],
-      child: MaterialApp(
-        title: 'Wayture',
-        debugShowCheckedModeBanner: false,
-        theme: AppTheme.lightTheme,
-        home: const SplashScreen(),
+      child: Consumer<ThemeService>(
+        builder: (context, themeSvc, _) => MaterialApp(
+          title: 'Wayture',
+          debugShowCheckedModeBanner: false,
+          theme: AppTheme.lightTheme,
+          darkTheme: AppTheme.darkTheme,
+          themeMode: themeSvc.themeMode,
+          home: const SplashScreen(),
+        ),
       ),
     );
   }

@@ -8,8 +8,10 @@ import 'package:wayture/models/report_model.dart';
 import 'package:wayture/services/mock_data.dart';
 import 'package:wayture/widgets/traffic_legend.dart';
 import 'package:wayture/widgets/weather_widget.dart';
-import 'package:wayture/widgets/route_card.dart';
+import 'package:wayture/services/theme_service.dart';
+import 'package:wayture/widgets/route_planning_sheet.dart';
 import 'package:wayture/widgets/custom_text_field.dart';
+import 'package:provider/provider.dart';
 
 /// Home / Map screen — the core screen of the app.
 /// Shows OpenStreetMap centered on Kathmandu with traffic overlays.
@@ -113,19 +115,44 @@ class _HomeScreenState extends State<HomeScreen> {
     _showAddReportSheet();
   }
 
+  // ── Polylines for "Simple" mode (single teal color) ──
+  List<Polyline> get _simplePolylines => [
+        Polyline(
+          points: MockData.greenRoute.map((p) => LatLng(p[0], p[1])).toList(),
+          color: AppColors.primary,
+          strokeWidth: 3,
+        ),
+        Polyline(
+          points:
+              MockData.yellowRoute.map((p) => LatLng(p[0], p[1])).toList(),
+          color: AppColors.primary.withAlpha(140),
+          strokeWidth: 3,
+        ),
+        Polyline(
+          points: MockData.redRoute.map((p) => LatLng(p[0], p[1])).toList(),
+          color: AppColors.primary.withAlpha(90),
+          strokeWidth: 3,
+        ),
+      ];
+
   @override
   Widget build(BuildContext context) {
+    final themeSvc = context.watch<ThemeService>();
+    final isDark = themeSvc.isDarkMode;
+    final mapMode = themeSvc.mapDisplayMode;
+
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       body: Stack(
         children: [
           // OpenStreetMap
-          _buildOSMap(),
+          _buildOSMap(isDark, mapMode),
 
           // Search bar at top
           Positioned(
             top: MediaQuery.of(context).padding.top + 12,
-            left: 16, right: 16,
+            left: 16,
+            right: 16,
             child: GestureDetector(
               onTap: _openRoutePlanning,
               child: ClipRRect(
@@ -133,11 +160,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 14),
                     decoration: BoxDecoration(
                       color: Colors.black.withAlpha(140),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withAlpha(40)),
+                      border:
+                          Border.all(color: Colors.white.withAlpha(40)),
                     ),
                     child: const Row(
                       children: [
@@ -145,10 +174,12 @@ class _HomeScreenState extends State<HomeScreen> {
                         SizedBox(width: 12),
                         Text(
                           'Where are you going?',
-                          style: TextStyle(color: Colors.white70, fontSize: 15),
+                          style: TextStyle(
+                              color: Colors.white70, fontSize: 15),
                         ),
                         Spacer(),
-                        Icon(Icons.directions, color: Color(0xFF00897B)),
+                        Icon(Icons.directions,
+                            color: Color(0xFF00897B)),
                       ],
                     ),
                   ),
@@ -157,22 +188,26 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
-          // Weather widget at top-right
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 72,
-            right: 16,
-            child: const WeatherWidget(),
-          ),
+          // Weather widget — hidden in Minimal mode
+          if (mapMode != MapDisplayMode.minimal)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 72,
+              right: 16,
+              child: const WeatherWidget(),
+            ),
 
-          // Traffic legend at bottom-left
-          const Positioned(
-            bottom: 16, left: 16,
-            child: TrafficLegend(),
-          ),
+          // Traffic legend — only in Color-coded mode
+          if (mapMode == MapDisplayMode.colorCoded)
+            const Positioned(
+              bottom: 16,
+              left: 16,
+              child: TrafficLegend(),
+            ),
 
           // FABs at bottom-right
           Positioned(
-            bottom: 16, right: 16,
+            bottom: 16,
+            right: 16,
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -181,7 +216,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   heroTag: 'report_fab',
                   onPressed: _openReportSheet,
                   backgroundColor: AppColors.accent,
-                  child: const Icon(Icons.warning_amber, size: 20, color: Colors.white),
+                  child: const Icon(Icons.warning_amber,
+                      size: 20, color: Colors.white),
                 ),
                 const SizedBox(height: 10),
                 // My location
@@ -189,12 +225,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   heroTag: 'location_fab',
                   onPressed: () {
                     _mapController.move(
-                      const LatLng(AppConstants.kathmanduLat, AppConstants.kathmanduLng),
+                      const LatLng(AppConstants.kathmanduLat,
+                          AppConstants.kathmanduLng),
                       15,
                     );
                   },
                   backgroundColor: AppColors.primary,
-                  child: const Icon(Icons.my_location, color: Colors.white),
+                  child:
+                      const Icon(Icons.my_location, color: Colors.white),
                 ),
               ],
             ),
@@ -204,154 +242,53 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildOSMap() {
+  Widget _buildOSMap(bool isDark, MapDisplayMode mapMode) {
     return FlutterMap(
       mapController: _mapController,
       options: MapOptions(
-        initialCenter: const LatLng(AppConstants.kathmanduLat, AppConstants.kathmanduLng),
+        initialCenter: const LatLng(
+            AppConstants.kathmanduLat, AppConstants.kathmanduLng),
         initialZoom: AppConstants.defaultZoom,
         maxZoom: 18,
         minZoom: 5,
       ),
       children: [
-        // OpenStreetMap tiles
+        // Map tiles — dark tiles in dark mode
         TileLayer(
-          urlTemplate: AppConstants.osmTileUrl,
+          urlTemplate: isDark
+              ? AppConstants.osmDarkTileUrl
+              : AppConstants.osmTileUrl,
           userAgentPackageName: 'com.wayture.app',
         ),
-        // Traffic route polylines
-        PolylineLayer(polylines: _trafficPolylines),
-        // Incident markers
-        MarkerLayer(markers: _incidentMarkers),
+        // Traffic polylines — mode-dependent
+        if (mapMode == MapDisplayMode.colorCoded)
+          PolylineLayer(polylines: _trafficPolylines),
+        if (mapMode == MapDisplayMode.simple)
+          PolylineLayer(polylines: _simplePolylines),
+        // Incident markers — only in Color-coded mode
+        if (mapMode == MapDisplayMode.colorCoded)
+          MarkerLayer(markers: _incidentMarkers),
       ],
     );
   }
 
   // -- Route Planning Bottom Sheet --
   void _showRoutePlanningSheet() {
-    final routes = MockData.routes;
-    bool showResults = false;
-
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (ctx) {
-        return StatefulBuilder(
-          builder: (context, setSheetState) {
-            return Container(
-              height: MediaQuery.of(context).size.height * 0.8,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [
-                  BoxShadow(color: Colors.black.withAlpha(60), blurRadius: 20),
-                ],
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Drag handle
-                    Center(
-                      child: Container(
-                        width: 40, height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    const Text(
-                      'Plan Your Route',
-                      style: TextStyle(
-                        fontSize: 20, fontWeight: FontWeight.bold,
-                        color: Color(0xFF212121),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // From field
-                    TextFormField(
-                      initialValue: 'Current Location',
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.circle, color: AppColors.trafficGreen, size: 14),
-                        labelText: 'From',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    // To field
-                    TextFormField(
-                      decoration: InputDecoration(
-                        prefixIcon: const Icon(Icons.location_on, color: AppColors.trafficRed, size: 18),
-                        labelText: 'To',
-                        hintText: 'Enter destination',
-                        filled: true,
-                        fillColor: Colors.grey.shade100,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(14),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Find routes button
-                    SizedBox(
-                      width: double.infinity, height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        onPressed: () {
-                          setSheetState(() => showResults = true);
-                        },
-                        child: const Text(
-                          'Find Routes',
-                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    // Route results
-                    if (showResults)
-                      Expanded(
-                        child: ListView.builder(
-                          itemCount: routes.length,
-                          itemBuilder: (context, index) {
-                            return RouteCard(
-                              route: routes[index],
-                              onNavigate: () {
-                                Navigator.pop(context);
-                                // Highlight the selected route on the map
-                                _highlightRoute(index);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(
-                                    content: Text('Navigating ${routes[index].name}...'),
-                                    backgroundColor: AppColors.primary,
-                                  ),
-                                );
-                              },
-                            );
-                          },
-                        ),
-                      ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+      builder: (_) => RoutePlanningSheet(
+        onNavigate: (index, name) {
+          _highlightRoute(index);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Navigation started via $name'),
+              backgroundColor: AppColors.primary,
+            ),
+          );
+        },
+      ),
     );
   }
 

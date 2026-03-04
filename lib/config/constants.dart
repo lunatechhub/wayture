@@ -10,8 +10,9 @@ class AppConstants {
   static const double kathmanduLng = 85.30369;
   static const double defaultZoom = 13.0;
 
-  // OpenStreetMap tile URL
+  // OpenStreetMap tile URLs
   static const String osmTileUrl = 'https://tile.openstreetmap.org/{z}/{x}/{y}.png';
+  static const String osmDarkTileUrl = 'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png';
 
   // Background image path
   static const String backgroundImage = 'lib/app/assets/welcome.jpg';

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:wayture/config/theme.dart';
+import 'package:wayture/services/theme_service.dart';
 import 'package:wayture/screens/home_screen.dart';
 import 'package:wayture/screens/reports_screen.dart';
 import 'package:wayture/screens/notifications_screen.dart';
@@ -33,7 +35,9 @@ class _MainScreenState extends State<MainScreen> {
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: const Color(0xFF1A1A2E),
+          color: context.watch<ThemeService>().isDarkMode
+              ? const Color(0xFF0D0D1A)
+              : const Color(0xFF1A1A2E),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withAlpha(60),

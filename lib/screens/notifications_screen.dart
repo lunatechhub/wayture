@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
+import 'package:wayture/services/theme_service.dart';
 import 'package:wayture/models/notification_model.dart';
 import 'package:wayture/services/mock_data.dart';
 import 'package:wayture/widgets/notification_card.dart';
@@ -33,26 +35,32 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = context.watch<ThemeService>().isDarkMode;
     return Scaffold(
       body: Stack(
         children: [
-          // Background image with dark overlay
-          Image.asset(
-            AppConstants.backgroundImage,
-            fit: BoxFit.cover,
+          if (!isDark)
+            Image.asset(
+              AppConstants.backgroundImage,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          Container(
             width: double.infinity,
             height: double.infinity,
-          ),
-          Container(
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.black.withAlpha(140),
-                  Colors.black.withAlpha(220),
-                ],
-              ),
+              color: isDark ? const Color(0xFF0D0D1A) : null,
+              gradient: isDark
+                  ? null
+                  : LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withAlpha(140),
+                        Colors.black.withAlpha(220),
+                      ],
+                    ),
             ),
           ),
           // Content

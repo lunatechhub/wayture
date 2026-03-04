@@ -22,9 +22,9 @@ extension TrafficLevelExtension on TrafficLevel {
 
   int get congestionPercent {
     switch (this) {
-      case TrafficLevel.light: return 25;
-      case TrafficLevel.moderate: return 55;
-      case TrafficLevel.heavy: return 85;
+      case TrafficLevel.light: return 15;
+      case TrafficLevel.moderate: return 42;
+      case TrafficLevel.heavy: return 68;
     }
   }
 }
