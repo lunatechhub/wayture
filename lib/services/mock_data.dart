@@ -135,39 +135,30 @@ class MockData {
     ];
   }
 
-  // ── Kathmandu Events ──
+  // ── Kathmandu Events (for home screen carousel) ──
   static List<KathmanduEvent> get kathmanduEvents {
     final now = DateTime.now();
     return [
       KathmanduEvent(
-        name: 'Indra Jatra',
-        description:
-            'Annual festival with chariot processions through old city',
-        affectedAreas: ['Basantapur', 'Thamel', 'Durbar'],
+        name: 'Bandh Alert',
+        description: 'Political strike reported in western Kathmandu',
+        affectedAreas: ['Kalanki', 'Kalimati', 'Balaju'],
         date: now,
         impactLevel: EventImpactLevel.high,
         isActive: true,
       ),
       KathmanduEvent(
-        name: 'Nepal Bandh',
-        description: 'General strike affecting major intersections',
-        affectedAreas: ['Kalanki', 'Koteshwor', 'Maitighar'],
+        name: 'Festival Traffic',
+        description: 'Increased traffic expected around Basantapur',
+        affectedAreas: ['Basantapur', 'Thamel', 'Asan'],
         date: now,
-        impactLevel: EventImpactLevel.high,
-        isActive: false,
-      ),
-      KathmanduEvent(
-        name: 'Bike Rally',
-        description: 'Charity bike rally through Ring Road',
-        affectedAreas: ['Balaju', 'Maharajgunj', 'Chabahil'],
-        date: now.add(const Duration(days: 2)),
         impactLevel: EventImpactLevel.medium,
-        isActive: false,
+        isActive: true,
       ),
       KathmanduEvent(
-        name: 'Road Maintenance',
-        description: 'Scheduled road repair on Thapathali Bridge',
-        affectedAreas: ['Thapathali', 'Maitighar'],
+        name: 'Construction',
+        description: 'Kalanki flyover construction — lane restrictions',
+        affectedAreas: ['Kalanki'],
         date: now,
         impactLevel: EventImpactLevel.low,
         isActive: true,
@@ -177,16 +168,68 @@ class MockData {
 
   // ── Peak Hour Ranges ──
   static const peakHourRanges = {
-    'morningStart': 7.5, // 7:30 AM
-    'morningEnd': 9.5, // 9:30 AM
-    'eveningStart': 16.5, // 4:30 PM
-    'eveningEnd': 19.0, // 7:00 PM
-    'nightStart': 22.0, // 10:00 PM
-    'nightEnd': 6.0, // 6:00 AM
+    'morningStart': 7.0,
+    'morningEnd': 10.0,
+    'eveningStart': 16.0,
+    'eveningEnd': 19.0,
   };
 
-  // ── Traffic Polyline Data (lat/lng pairs for demo) ──
-  // Green: Lazimpat → Thamel (light traffic)
+  // ── Route Polyline Coordinates (Koteshwor → Thamel) ──
+
+  // Route 1: Via Lazimpat (Green - Recommended)
+  static const List<List<double>> route1Points = [
+    [27.6781, 85.3499], // Koteshwor
+    [27.6882, 85.3419], // New Baneshwor
+    [27.7030, 85.3350], // Baneshwor
+    [27.7119, 85.3427], // Gaushala
+    [27.7220, 85.3238], // Lazimpat
+    [27.7153, 85.3123], // Thamel
+  ];
+
+  // Route 2: Via Bagbazar (Yellow - Moderate)
+  static const List<List<double>> route2Points = [
+    [27.6781, 85.3499], // Koteshwor
+    [27.6882, 85.3419], // New Baneshwor
+    [27.6947, 85.3222], // Maitighar
+    [27.7030, 85.3200], // Putalisadak/Bagbazar
+    [27.7100, 85.3150], // Asan area
+    [27.7153, 85.3123], // Thamel
+  ];
+
+  // Route 3: Via Durbarmarg (Red - Heavy)
+  static const List<List<double>> route3Points = [
+    [27.6781, 85.3499], // Koteshwor
+    [27.6844, 85.3465], // Tinkune
+    [27.6926, 85.3220], // Thapathali
+    [27.6947, 85.3222], // Maitighar
+    [27.7030, 85.3180], // Durbarmarg
+    [27.7153, 85.3123], // Thamel
+  ];
+
+  // All route polylines grouped
+  static const List<List<List<double>>> routePolylines = [
+    route1Points,
+    route2Points,
+    route3Points,
+  ];
+
+  // ── Route-specific incident markers ──
+  static const List<Map<String, dynamic>> routeIncidents = [
+    {
+      'lat': 27.6948,
+      'lng': 85.3222,
+      'type': 'protest',
+      'label': 'Protest at Maitighar',
+    },
+    {
+      'lat': 27.6921,
+      'lng': 85.3225,
+      'type': 'accident',
+      'label': 'Accident at Thapathali',
+    },
+  ];
+
+  // Legacy polyline data (for default map overlay)
   static const List<List<double>> greenRoute = [
     [27.7221, 85.3216],
     [27.7200, 85.3180],
@@ -194,7 +237,6 @@ class MockData {
     [27.7152, 85.3123],
   ];
 
-  // Yellow: Koteshwor → Tinkune (moderate traffic)
   static const List<List<double>> yellowRoute = [
     [27.6781, 85.3490],
     [27.6800, 85.3475],
@@ -202,7 +244,6 @@ class MockData {
     [27.6852, 85.3442],
   ];
 
-  // Red: Kalanki → Kalimati (heavy traffic)
   static const List<List<double>> redRoute = [
     [27.6933, 85.2814],
     [27.6940, 85.2880],

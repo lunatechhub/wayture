@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:wayture/models/route_model.dart';
+import 'package:wayture/services/mock_data.dart';
 
 class RouteMapPreview extends StatefulWidget {
   final List<RouteModel> routes;
@@ -22,21 +23,17 @@ class RouteMapPreview extends StatefulWidget {
 class _RouteMapPreviewState extends State<RouteMapPreview> {
   int? _highlightedIndex;
 
-  // Generate mock polylines for each route (spread around Kathmandu center)
   List<List<LatLng>> get _routePolylines {
-    const center = LatLng(27.7090, 85.3120);
-    return List.generate(widget.routes.length, (i) {
-      final offset = (i - 1) * 0.008;
-      return [
-        LatLng(center.latitude - 0.015, center.longitude - 0.02 + offset),
-        LatLng(center.latitude - 0.005, center.longitude - 0.01 + offset * 0.5),
-        LatLng(center.latitude + 0.005, center.longitude + offset * 0.3),
-        LatLng(center.latitude + 0.012, center.longitude + 0.015 + offset),
-      ];
-    });
+    return List.generate(
+      widget.routes.length.clamp(0, MockData.routePolylines.length),
+      (i) => MockData.routePolylines[i]
+          .map((p) => LatLng(p[0], p[1]))
+          .toList(),
+    );
   }
 
   Color _routeColor(int index) {
+    if (index >= widget.routes.length) return const Color(0xFF4CAF50);
     switch (widget.routes[index].trafficLevel) {
       case TrafficLevel.light:
         return const Color(0xFF4CAF50);
@@ -50,6 +47,7 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
   @override
   Widget build(BuildContext context) {
     final polylines = _routePolylines;
+    if (polylines.isEmpty) return const SizedBox.shrink();
     final highlighted = _highlightedIndex ?? widget.selectedRouteIndex;
 
     return Container(
@@ -64,7 +62,7 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
         children: [
           FlutterMap(
             options: const MapOptions(
-              initialCenter: LatLng(27.7090, 85.3120),
+              initialCenter: LatLng(27.7000, 85.3300),
               initialZoom: 13.0,
               interactionOptions: InteractionOptions(
                 flags: InteractiveFlag.none,
@@ -73,7 +71,7 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
             children: [
               TileLayer(
                 urlTemplate:
-                    'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                    'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.wayture.app',
               ),
               PolylineLayer(
@@ -81,10 +79,30 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
                   final isHighlighted = highlighted == i;
                   return Polyline(
                     points: polylines[i],
-                    color: _routeColor(i).withAlpha(isHighlighted ? 230 : 100),
+                    color:
+                        _routeColor(i).withAlpha(isHighlighted ? 230 : 100),
                     strokeWidth: isHighlighted ? 5.0 : 3.0,
                   );
                 }),
+              ),
+              // Incident markers
+              MarkerLayer(
+                markers: MockData.routeIncidents.map((incident) {
+                  final isProtest = incident['type'] == 'protest';
+                  return Marker(
+                    point: LatLng(
+                      incident['lat'] as double,
+                      incident['lng'] as double,
+                    ),
+                    width: 24,
+                    height: 24,
+                    child: Icon(
+                      isProtest ? Icons.groups : Icons.car_crash,
+                      color: isProtest ? Colors.red : Colors.orange,
+                      size: 20,
+                    ),
+                  );
+                }).toList(),
               ),
             ],
           ),
@@ -95,7 +113,8 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
             right: 8,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(widget.routes.length, (i) {
+              children: List.generate(
+                  widget.routes.length.clamp(0, polylines.length), (i) {
                 final isActive = highlighted == i;
                 return Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -113,7 +132,8 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
                             : const Color(0xFF1A1A2E).withAlpha(200),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: _routeColor(i).withAlpha(isActive ? 255 : 100),
+                          color:
+                              _routeColor(i).withAlpha(isActive ? 255 : 100),
                         ),
                       ),
                       child: Text(

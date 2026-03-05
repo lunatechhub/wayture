@@ -51,10 +51,18 @@ enum _SheetView { form, fromPicker, toSearch }
 
 /// Full-featured route planning bottom sheet.
 /// Accepts [onNavigate] callback with (routeIndex, routeName).
+/// Optionally accepts [prefillFrom] and [prefillTo] to pre-fill fields.
 class RoutePlanningSheet extends StatefulWidget {
   final void Function(int routeIndex, String routeName) onNavigate;
+  final String? prefillFrom;
+  final String? prefillTo;
 
-  const RoutePlanningSheet({super.key, required this.onNavigate});
+  const RoutePlanningSheet({
+    super.key,
+    required this.onNavigate,
+    this.prefillFrom,
+    this.prefillTo,
+  });
 
   @override
   State<RoutePlanningSheet> createState() => _RoutePlanningSheetState();
@@ -73,6 +81,21 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
 
   final _searchCtrl = TextEditingController();
   final _searchFocus = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.prefillFrom != null) {
+      _fromLocation = widget.prefillFrom!;
+    }
+    if (widget.prefillTo != null) {
+      _toLocation = widget.prefillTo;
+      // Auto-search after build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _findRoutes();
+      });
+    }
+  }
 
   // From picker shows a curated subset
   static const _fromLocationNames = [
@@ -474,6 +497,9 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
               ),
               child: RouteCard(
                 route: _routes[i],
+                departureLabel: _departureTime != null
+                    ? _formatDepartureLabel(_departureTime!)
+                    : null,
                 onNavigate: () {
                   // Save to history
                   routeService.addToHistory(
@@ -689,6 +715,13 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
         ),
       ],
     );
+  }
+
+  String _formatDepartureLabel(TimeOfDay time) {
+    final hour = time.hourOfPeriod == 0 ? 12 : time.hourOfPeriod;
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.period == DayPeriod.am ? 'AM' : 'PM';
+    return '$hour:$minute $period';
   }
 
   // ── Shared small widgets ─────────────────────────────────

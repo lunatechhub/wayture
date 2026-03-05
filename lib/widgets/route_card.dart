@@ -9,6 +9,7 @@ class RouteCard extends StatelessWidget {
   final VoidCallback? onNavigate;
   final VoidCallback? onSave;
   final bool isFavorite;
+  final String? departureLabel;
 
   const RouteCard({
     super.key,
@@ -16,6 +17,7 @@ class RouteCard extends StatelessWidget {
     this.onNavigate,
     this.onSave,
     this.isFavorite = false,
+    this.departureLabel,
   });
 
   @override
@@ -169,6 +171,50 @@ class RouteCard extends StatelessWidget {
               ),
             ],
           ),
+
+          // Time comparison (when departure time is set)
+          if (route.nowEstimatedMinutes != null && departureLabel != null) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.white.withAlpha(8),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.compare_arrows,
+                      color: Colors.white38, size: 14),
+                  const SizedBox(width: 6),
+                  Text(
+                    'Now: ${route.nowEstimatedMinutes} min',
+                    style: const TextStyle(
+                        color: Colors.white54, fontSize: 11),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 1,
+                    height: 12,
+                    color: Colors.white24,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    'At $departureLabel: ${route.estimatedMinutes} min',
+                    style: TextStyle(
+                      color: route.estimatedMinutes >
+                              (route.nowEstimatedMinutes ?? 0)
+                          ? const Color(0xFFF44336)
+                          : const Color(0xFF4CAF50),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
 
           // Traffic progress bar + navigate button

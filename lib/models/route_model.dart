@@ -43,6 +43,8 @@ class RouteModel {
   final int communityTrustPercent;
   final int alertCount;
 
+  final int? nowEstimatedMinutes;
+
   RouteModel({
     required this.id,
     required this.name,
@@ -54,5 +56,6 @@ class RouteModel {
     this.congestionBreakdown,
     this.communityTrustPercent = 0,
     this.alertCount = 0,
+    this.nowEstimatedMinutes,
   });
 }

@@ -33,35 +33,59 @@ extension CongestionFactorExtension on CongestionFactor {
     }
   }
 
-  String get emoji {
+  int get maxScore {
     switch (this) {
       case CongestionFactor.speed:
-        return '🚗';
+        return 40;
       case CongestionFactor.incidents:
-        return '⚠️';
+        return 30;
       case CongestionFactor.weather:
-        return '🌧️';
+        return 20;
       case CongestionFactor.peakHour:
-        return '⏰';
+        return 15;
       case CongestionFactor.hotspot:
-        return '🔥';
+        return 12;
     }
   }
 }
 
+class FactorInsight {
+  final bool isPositive;
+  final String text;
+
+  const FactorInsight({required this.isPositive, required this.text});
+}
+
 class CongestionBreakdown {
-  final Map<CongestionFactor, double> factors;
+  final Map<CongestionFactor, int> scores;
+  final List<FactorInsight> insights;
 
-  const CongestionBreakdown(this.factors);
+  const CongestionBreakdown({
+    required this.scores,
+    this.insights = const [],
+  });
 
-  double get overall {
-    if (factors.isEmpty) return 0;
-    return factors.values.reduce((a, b) => a + b) / factors.length;
+  int get totalScore => scores.values.fold(0, (a, b) => a + b);
+
+  String get classification {
+    if (totalScore < 25) return 'Low';
+    if (totalScore < 50) return 'Moderate';
+    return 'Heavy';
   }
 
-  Color colorForValue(double value) {
-    if (value < 0.4) return const Color(0xFF4CAF50);
-    if (value < 0.7) return const Color(0xFFFFC107);
+  Color get classificationColor {
+    if (totalScore < 25) return const Color(0xFF4CAF50);
+    if (totalScore < 50) return const Color(0xFFFFC107);
+    return const Color(0xFFF44336);
+  }
+
+  Color colorForFactor(CongestionFactor factor) {
+    final score = scores[factor] ?? 0;
+    final max = factor.maxScore;
+    if (max == 0) return const Color(0xFF4CAF50);
+    final ratio = score / max;
+    if (ratio < 0.25) return const Color(0xFF4CAF50);
+    if (ratio < 0.65) return const Color(0xFFFFC107);
     return const Color(0xFFF44336);
   }
 }

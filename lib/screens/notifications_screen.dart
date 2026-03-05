@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
+import 'package:wayture/services/api_service.dart';
 import 'package:wayture/services/theme_service.dart';
 import 'package:wayture/models/notification_model.dart';
 import 'package:wayture/services/mock_data.dart';
@@ -21,11 +22,20 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
   void initState() {
     super.initState();
     _notifications = MockData.notifications;
+    _loadNotificationsFromApi();
+  }
+
+  Future<void> _loadNotificationsFromApi() async {
+    final apiNotifications = await ApiService.getNotifications();
+    if (apiNotifications != null && mounted) {
+      setState(() => _notifications = apiNotifications);
+    }
   }
 
   int get _unreadCount => _notifications.where((n) => !n.isRead).length;
 
   void _markAllRead() {
+    ApiService.markAllNotificationsRead();
     setState(() {
       for (final n in _notifications) {
         n.isRead = true;
@@ -126,6 +136,7 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                                 setState(() => _notifications.removeAt(index));
                               },
                               onTap: () {
+                                ApiService.markNotificationRead(_notifications[index].id);
                                 setState(() => _notifications[index].isRead = true);
                               },
                             );

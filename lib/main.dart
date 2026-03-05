@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/screens/splash_screen.dart';
 import 'package:wayture/services/auth_service.dart';
+import 'package:wayture/services/connection_manager.dart';
 import 'package:wayture/services/route_service.dart';
 import 'package:wayture/services/theme_service.dart';
 
@@ -18,11 +19,17 @@ void main() async {
     debugPrint('Firebase init skipped: $e');
   }
 
-  runApp(const WaytureApp());
+  // Initialize connection manager
+  final connectionManager = ConnectionManager();
+  connectionManager.initialize();
+
+  runApp(WaytureApp(connectionManager: connectionManager));
 }
 
 class WaytureApp extends StatelessWidget {
-  const WaytureApp({super.key});
+  final ConnectionManager connectionManager;
+
+  const WaytureApp({super.key, required this.connectionManager});
 
   @override
   Widget build(BuildContext context) {
@@ -31,6 +38,7 @@ class WaytureApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthService()),
         ChangeNotifierProvider(create: (_) => ThemeService()),
         ChangeNotifierProvider(create: (_) => RouteService()),
+        ChangeNotifierProvider.value(value: connectionManager),
       ],
       child: Consumer<ThemeService>(
         builder: (context, themeSvc, _) => MaterialApp(

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
 import 'package:wayture/config/theme.dart';
+import 'package:wayture/services/api_service.dart';
 import 'package:wayture/services/theme_service.dart';
 import 'package:wayture/models/report_model.dart';
 import 'package:wayture/services/mock_data.dart';
@@ -26,6 +27,14 @@ class _ReportsScreenState extends State<ReportsScreen> {
   void initState() {
     super.initState();
     _reports = MockData.reports;
+    _loadReportsFromApi();
+  }
+
+  Future<void> _loadReportsFromApi() async {
+    final apiReports = await ApiService.getReports();
+    if (apiReports != null && mounted) {
+      setState(() => _reports = apiReports);
+    }
   }
 
   List<ReportModel> get _filteredReports {
@@ -259,28 +268,40 @@ class _ReportsScreenState extends State<ReportsScreen> {
                             borderRadius: BorderRadius.circular(14),
                           ),
                         ),
-                        onPressed: () {
+                        onPressed: () async {
+                          final desc = descController.text.isEmpty
+                              ? 'Reported via app'
+                              : descController.text;
+
+                          // Try API first
+                          ApiService.submitReport(
+                            type: selectedType.name,
+                            location: 'Your Location',
+                            description: desc,
+                          );
+
+                          // Always add locally for instant feedback
                           setState(() {
                             _reports.insert(0, ReportModel(
                               id: DateTime.now().millisecondsSinceEpoch.toString(),
                               type: selectedType,
                               location: 'Your Location',
-                              description: descController.text.isEmpty
-                                  ? 'Reported via app'
-                                  : descController.text,
+                              description: desc,
                               reporterName: 'You',
                               timestamp: DateTime.now(),
                               latitude: 27.7172,
                               longitude: 85.3240,
                             ));
                           });
-                          Navigator.pop(context);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Report submitted!'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
+                          if (context.mounted) {
+                            Navigator.pop(context);
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Report submitted!'),
+                                backgroundColor: Colors.green,
+                              ),
+                            );
+                          }
                         },
                         child: const Text('Submit Report',
                           style: TextStyle(color: Colors.black, fontWeight: FontWeight.bold)),

@@ -16,15 +16,30 @@ class RouteService extends ChangeNotifier {
   List<RouteModel> _currentRoutes = [];
   List<RouteModel> get currentRoutes => _currentRoutes;
 
+  // ── Navigation State ──
+  bool _isNavigating = false;
+  bool get isNavigating => _isNavigating;
+  int? _navigatingRouteIndex;
+  int? get navigatingRouteIndex => _navigatingRouteIndex;
+  String? _navigatingRouteName;
+  String? get navigatingRouteName => _navigatingRouteName;
+  int _navigatingEta = 0;
+  int get navigatingEta => _navigatingEta;
+
+  // ── Route display state ──
+  bool _showRoutesOnMap = false;
+  bool get showRoutesOnMap => _showRoutesOnMap;
+  int? _highlightedRouteIndex;
+  int? get highlightedRouteIndex => _highlightedRouteIndex;
+
   // ── Alerts ──
   final List<RouteAlert> _activeAlerts = [];
   List<RouteAlert> get activeAlerts =>
       _activeAlerts.where((a) => a.isActive).toList();
 
   // ── Events ──
-  List<KathmanduEvent> get todaysEvents => MockData.kathmanduEvents
-      .where((e) => e.isActive)
-      .toList();
+  List<KathmanduEvent> get todaysEvents =>
+      MockData.kathmanduEvents.where((e) => e.isActive).toList();
 
   // ── Route History ──
   final List<RouteHistoryItem> _routeHistory = [];
@@ -39,47 +54,59 @@ class RouteService extends ChangeNotifier {
     TimeOfDay? departureTime,
   }) {
     final baseRoutes = _buildRouteOptions(from, to);
-    final timeMultiplier = departureTime != null
-        ? predictCongestion(departureTime.hour, departureTime.minute)
-        : 1.0;
+    final bool isPeak = departureTime != null
+        ? _isPeakHour(departureTime.hour, departureTime.minute)
+        : _isPeakHour(TimeOfDay.now().hour, TimeOfDay.now().minute);
+    final bool isWeekend = _isWeekend();
 
-    _currentRoutes = baseRoutes.map((route) {
-      final breakdown = _computeCongestionBreakdown(
-        route.trafficLevel,
-        timeMultiplier,
-        _getEventImpact(from, to),
-      );
-      final trust = communityTrustScore(baseRoutes.indexOf(route));
+    _currentRoutes = List.generate(baseRoutes.length, (i) {
+      final route = baseRoutes[i];
+      final breakdown = _computeBreakdown(route.trafficLevel, isPeak, isWeekend);
+
+      // Compute time estimates
+      final nowMinutes = route.estimatedMinutes;
+      int adjustedMinutes = nowMinutes;
+      if (departureTime != null) {
+        final depPeak = _isPeakHour(departureTime.hour, departureTime.minute);
+        if (depPeak) {
+          adjustedMinutes = (nowMinutes * 1.25).round();
+        } else if (isWeekend) {
+          adjustedMinutes = (nowMinutes * 0.9).round();
+        }
+      }
+
+      final trust = _communityTrustScore(i);
 
       return RouteModel(
         id: route.id,
         name: route.name,
         description: route.description,
-        estimatedMinutes:
-            (route.estimatedMinutes * timeMultiplier).round(),
+        estimatedMinutes: departureTime != null ? adjustedMinutes : nowMinutes,
         distanceKm: route.distanceKm,
-        trafficLevel: _adjustTrafficLevel(route.trafficLevel, timeMultiplier),
+        trafficLevel: route.trafficLevel,
         isRecommended: route.isRecommended,
         congestionBreakdown: breakdown,
         communityTrustPercent: trust,
-        alertCount: activeAlerts
-            .where((a) => a.routeIndex == baseRoutes.indexOf(route))
-            .length,
+        alertCount: activeAlerts.where((a) => a.routeIndex == i).length,
+        nowEstimatedMinutes: departureTime != null ? nowMinutes : null,
       );
-    }).toList();
+    });
 
+    _showRoutesOnMap = true;
     _startAlertTimer();
     notifyListeners();
     return _currentRoutes;
   }
 
   List<RouteModel> _buildRouteOptions(String from, String to) {
-    // Use a hash of from+to to produce deterministic but varied routes
     final seed = '$from→$to'.hashCode;
     final r = Random(seed);
-
     final routeNames = _getRouteNames(from, to);
-    final levels = [TrafficLevel.light, TrafficLevel.moderate, TrafficLevel.heavy];
+    final levels = [
+      TrafficLevel.light,
+      TrafficLevel.moderate,
+      TrafficLevel.heavy,
+    ];
 
     return List.generate(3, (i) {
       final baseDist = 4.0 + r.nextDouble() * 4;
@@ -89,7 +116,8 @@ class RouteService extends ChangeNotifier {
       return RouteModel(
         id: '${i + 1}',
         name: routeNames[i],
-        description: '$from → ${routeNames[i].replaceAll('Via ', '')} → $to',
+        description:
+            '$from → ${routeNames[i].replaceAll('Via ', '')} → $to',
         estimatedMinutes: baseMin,
         distanceKm: dist,
         trafficLevel: levels[i],
@@ -99,7 +127,6 @@ class RouteService extends ChangeNotifier {
   }
 
   List<String> _getRouteNames(String from, String to) {
-    // Pick via-points from known Kathmandu areas
     const viaPoints = [
       'Lazimpat', 'Bagbazar', 'Durbarmarg', 'Putalisadak',
       'Maharajgunj', 'Thapathali', 'Chabahil', 'Gaushala',
@@ -111,96 +138,132 @@ class RouteService extends ChangeNotifier {
     return shuffled.take(3).map((v) => 'Via $v').toList();
   }
 
-  // ── Congestion Breakdown ──
-  CongestionBreakdown _computeCongestionBreakdown(
+  // ── Congestion Breakdown (Point-Based) ──
+  CongestionBreakdown _computeBreakdown(
     TrafficLevel level,
-    double timeMultiplier,
-    double eventImpact,
+    bool isPeak,
+    bool isWeekend,
   ) {
-    double base;
+    // Base scores by traffic level
+    final Map<CongestionFactor, int> scores;
+    final List<FactorInsight> insights;
+
     switch (level) {
       case TrafficLevel.light:
-        base = 0.15;
+        scores = {
+          CongestionFactor.speed: 0,
+          CongestionFactor.incidents: 0,
+          CongestionFactor.weather: 0,
+          CongestionFactor.peakHour: isPeak ? 15 : 0,
+          CongestionFactor.hotspot: 0,
+        };
+        insights = [
+          const FactorInsight(isPositive: true, text: 'No incidents on this route'),
+          const FactorInsight(isPositive: true, text: 'Clear weather conditions'),
+          if (isPeak)
+            const FactorInsight(isPositive: false, text: 'Peak hour traffic')
+          else
+            const FactorInsight(isPositive: true, text: 'Off-peak — smooth traffic'),
+        ];
+
       case TrafficLevel.moderate:
-        base = 0.45;
+        scores = {
+          CongestionFactor.speed: 10,
+          CongestionFactor.incidents: 12,
+          CongestionFactor.weather: 0,
+          CongestionFactor.peakHour: isPeak ? 15 : 0,
+          CongestionFactor.hotspot: 5,
+        };
+        insights = [
+          const FactorInsight(isPositive: false, text: 'Slightly slow traffic detected'),
+          const FactorInsight(isPositive: false, text: '1 incident reported nearby'),
+          const FactorInsight(isPositive: true, text: 'Clear weather conditions'),
+          if (isPeak)
+            const FactorInsight(isPositive: false, text: 'Peak hour traffic'),
+          const FactorInsight(isPositive: false, text: 'Passes through congestion area'),
+        ];
+
       case TrafficLevel.heavy:
-        base = 0.75;
+        scores = {
+          CongestionFactor.speed: 25,
+          CongestionFactor.incidents: 18,
+          CongestionFactor.weather: 5,
+          CongestionFactor.peakHour: isPeak ? 15 : 0,
+          CongestionFactor.hotspot: 5,
+        };
+        insights = [
+          const FactorInsight(isPositive: false, text: 'Very slow traffic on this route'),
+          const FactorInsight(isPositive: false, text: '2 incidents: accident + protest'),
+          const FactorInsight(isPositive: false, text: 'Light rain affecting roads'),
+          if (isPeak)
+            const FactorInsight(isPositive: false, text: 'Peak hour traffic'),
+          const FactorInsight(isPositive: false, text: 'Passes through Maitighar area'),
+        ];
     }
 
-    final factors = <CongestionFactor, double>{};
-    for (final factor in CongestionFactor.values) {
-      double value;
-      switch (factor) {
-        case CongestionFactor.speed:
-          value = base + (_random.nextDouble() * 0.15);
-        case CongestionFactor.incidents:
-          value = base * 0.7 + (_random.nextDouble() * 0.2);
-        case CongestionFactor.weather:
-          value = 0.1 + (_random.nextDouble() * 0.3);
-        case CongestionFactor.peakHour:
-          value = (timeMultiplier - 1.0).clamp(0.0, 1.0) + base * 0.3;
-        case CongestionFactor.hotspot:
-          value = base * 0.8 + eventImpact;
-      }
-      factors[factor] = value.clamp(0.0, 1.0);
+    // Weekend reduction: -10% on all scores
+    if (isWeekend) {
+      final adjusted = scores.map((k, v) => MapEntry(k, (v * 0.9).round()));
+      return CongestionBreakdown(scores: adjusted, insights: insights);
     }
 
-    return CongestionBreakdown(factors);
+    return CongestionBreakdown(scores: scores, insights: insights);
   }
 
-  double _getEventImpact(String from, String to) {
-    final events = todaysEvents;
-    if (events.isEmpty) return 0.0;
-
-    double impact = 0.0;
-    for (final event in events) {
-      for (final area in event.affectedAreas) {
-        if (from.contains(area) || to.contains(area)) {
-          switch (event.impactLevel) {
-            case EventImpactLevel.low:
-              impact += 0.1;
-            case EventImpactLevel.medium:
-              impact += 0.2;
-            case EventImpactLevel.high:
-              impact += 0.3;
-          }
-        }
-      }
-    }
-    return impact.clamp(0.0, 0.5);
-  }
-
-  TrafficLevel _adjustTrafficLevel(TrafficLevel base, double multiplier) {
-    if (multiplier <= 0.7) {
-      // Night time — reduce
-      if (base == TrafficLevel.heavy) return TrafficLevel.moderate;
-      if (base == TrafficLevel.moderate) return TrafficLevel.light;
-      return base;
-    }
-    if (multiplier >= 1.3) {
-      // Peak — increase
-      if (base == TrafficLevel.light) return TrafficLevel.moderate;
-      if (base == TrafficLevel.moderate) return TrafficLevel.heavy;
-      return base;
-    }
-    return base;
-  }
-
-  // ── Time-Based Prediction ──
-  double predictCongestion(int hour, [int minute = 0]) {
+  bool _isPeakHour(int hour, [int minute = 0]) {
     final time = hour + minute / 60.0;
+    // Morning peak: 7-10 AM
+    if (time >= 7.0 && time < 10.0) return true;
+    // Evening peak: 4-7 PM
+    if (time >= 16.0 && time < 19.0) return true;
+    return false;
+  }
 
-    // Morning peak (7:30–9:30): +40%
-    if (time >= 7.5 && time <= 9.5) return 1.4;
-    // Evening peak (16:30–19:00): +35%
-    if (time >= 16.5 && time <= 19.0) return 1.35;
-    // Night (22:00–6:00): -50%
-    if (time >= 22.0 || time <= 6.0) return 0.5;
+  bool _isWeekend() {
+    final day = DateTime.now().weekday;
+    return day == DateTime.saturday || day == DateTime.sunday;
+  }
 
-    // Festival/event hours: check for active events
-    if (todaysEvents.isNotEmpty) return 1.2;
+  // ── Navigation ──
+  void startNavigation(int index, String name) {
+    _isNavigating = true;
+    _navigatingRouteIndex = index;
+    _navigatingRouteName = name;
+    _navigatingEta = index < _currentRoutes.length
+        ? _currentRoutes[index].estimatedMinutes
+        : 20;
+    _highlightedRouteIndex = index;
+    notifyListeners();
+  }
 
-    return 1.0;
+  void switchRoute(int newIndex, String newName) {
+    _navigatingRouteIndex = newIndex;
+    _navigatingRouteName = newName;
+    _navigatingEta = newIndex < _currentRoutes.length
+        ? _currentRoutes[newIndex].estimatedMinutes
+        : 20;
+    _highlightedRouteIndex = newIndex;
+    notifyListeners();
+  }
+
+  void stopNavigation() {
+    _isNavigating = false;
+    _navigatingRouteIndex = null;
+    _navigatingRouteName = null;
+    _showRoutesOnMap = false;
+    _highlightedRouteIndex = null;
+    notifyListeners();
+  }
+
+  void highlightRoute(int index) {
+    _highlightedRouteIndex = index;
+    notifyListeners();
+  }
+
+  void clearRouteDisplay() {
+    _showRoutesOnMap = false;
+    _highlightedRouteIndex = null;
+    notifyListeners();
   }
 
   // ── Alerts ──
@@ -241,7 +304,6 @@ class RouteService extends ChangeNotifier {
     _activeAlerts.add(alert);
     notifyListeners();
 
-    // Auto-expire after 30 seconds
     Timer(const Duration(seconds: 30), () {
       final idx = _activeAlerts.indexWhere((a) => a.id == alert.id);
       if (idx != -1) {
@@ -261,7 +323,6 @@ class RouteService extends ChangeNotifier {
 
   // ── Route History ──
   void addToHistory(String from, String to, String routeName) {
-    // Avoid duplicates at the top
     _routeHistory.removeWhere(
         (h) => h.from == from && h.to == to && h.routeName == routeName);
     _routeHistory.insert(
@@ -273,7 +334,6 @@ class RouteService extends ChangeNotifier {
         timestamp: DateTime.now(),
       ),
     );
-    // Keep last 20
     if (_routeHistory.length > 20) {
       _routeHistory.removeRange(20, _routeHistory.length);
     }
@@ -288,10 +348,9 @@ class RouteService extends ChangeNotifier {
   }
 
   // ── Community Trust Score ──
-  int communityTrustScore(int routeIndex) {
-    // Recommended routes (index 0) get higher trust
+  int _communityTrustScore(int routeIndex) {
     final base = routeIndex == 0 ? 85 : (routeIndex == 1 ? 75 : 65);
-    return base + _random.nextInt(11); // 60–95 range
+    return base + _random.nextInt(11);
   }
 
   @override
