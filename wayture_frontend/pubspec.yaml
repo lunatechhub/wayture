@@ -1,0 +1,65 @@
+name: wayture
+description: "Wayture — Traffic Congestion Predictor for Kathmandu"
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.10.4
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+
+  # Firebase
+  firebase_core:
+  firebase_auth:
+  cloud_firestore: ^5.4.0
+  firebase_database:
+
+  # Maps & Location (OpenStreetMap home tab + Google Maps live tab)
+  flutter_map: ^7.0.2
+  latlong2: ^0.9.1
+  google_maps_flutter: ^2.5.0
+  geolocator: ^10.1.0
+  geocoding: ^2.1.1
+
+  # State Management
+  provider: ^6.1.1
+
+  # UI & Design
+  google_fonts: ^6.1.0
+  flutter_animate: ^4.3.0
+  shimmer: ^3.0.0
+  cached_network_image: ^3.3.0
+
+  # Image Picker
+  image_picker: ^1.0.7
+
+  # Utilities
+  intl: ^0.18.1
+  http: ^1.1.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.1
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/images/
+    - assets/icon/
+    - lib/app/assets/welcome.jpg
+
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/wayture_icon_1024.png"
+  adaptive_icon_background: "#042F2E"
+  adaptive_icon_foreground: "assets/icon/wayture_icon_1024.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true

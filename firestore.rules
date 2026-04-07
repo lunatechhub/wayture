@@ -1,0 +1,42 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /communityReports/{reportId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null
+        && request.resource.data.keys().hasAll(['type','description','latitude','longitude','timestamp','userid'])
+        && request.resource.data.type in ['accident','jam','strike','roadblock'];
+      allow update, delete: if request.auth != null
+        && resource.data.userid == request.auth.uid;
+    }
+
+    match /routes/{routeId} {
+      allow read, write: if request.auth != null && resource.data.userid == request.auth.uid;
+    }
+
+    match /notifications/{notifId} {
+      allow read, write: if request.auth != null && resource.data.userid == request.auth.uid;
+    }
+
+    match /settings/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /locations/{locationId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // Bug reports — any signed-in user can create their own report.
+    // No one reads or deletes them client-side (admin only, server-side).
+    match /bugReports/{reportId} {
+      allow create: if request.auth != null
+                    && request.resource.data.userid == request.auth.uid;
+      allow read, update, delete: if false;
+    }
+  }
+}
