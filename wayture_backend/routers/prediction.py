@@ -68,14 +68,14 @@ def _compute_score(
 
 def _score_to_level(score: float) -> CongestionLevel:
     if score >= 60:
-        return CongestionLevel.RED
+        return CongestionLevel.HIGH
     if score >= 30:
-        return CongestionLevel.YELLOW
-    return CongestionLevel.GREEN
+        return CongestionLevel.MEDIUM
+    return CongestionLevel.LOW
 
 
 def _level_to_color(level: CongestionLevel) -> str:
-    return {"green": "#4CAF50", "yellow": "#FFC107", "red": "#F44336"}[level.value]
+    return {"low": "#4CAF50", "medium": "#FFC107", "high": "#F44336", "severe": "#B71C1C"}[level.value]
 
 
 def _build_reason(
@@ -105,7 +105,7 @@ def _build_reason(
         reasons.append(f"Weather: {weather_label.replace('_', ' ')}")
 
     if not reasons:
-        if level == CongestionLevel.GREEN:
+        if level == CongestionLevel.LOW:
             return "Traffic is flowing smoothly"
         return "Moderate traffic detected"
 
@@ -196,17 +196,17 @@ async def predict_congestion(
         if main_duration and main_duration > 0:
             ratio = alt_duration / main_duration
             if ratio <= 0.85:
-                alt_level = CongestionLevel.GREEN
+                alt_level = CongestionLevel.LOW
             elif ratio <= 1.0:
                 # Slightly shorter or same — one level better than main
-                alt_level = CongestionLevel.GREEN if level != CongestionLevel.RED else CongestionLevel.YELLOW
+                alt_level = CongestionLevel.LOW if level != CongestionLevel.HIGH else CongestionLevel.MEDIUM
             elif ratio <= 1.15:
                 alt_level = level  # Similar to main
             else:
                 # Longer route — likely same or worse congestion
-                alt_level = CongestionLevel.YELLOW if level == CongestionLevel.GREEN else level
+                alt_level = CongestionLevel.MEDIUM if level == CongestionLevel.LOW else level
         else:
-            alt_level = CongestionLevel.GREEN
+            alt_level = CongestionLevel.LOW
 
         alternate_routes.append(RouteInfo(
             route_index=i + 1,
@@ -307,9 +307,10 @@ async def get_traffic_status(lat: float, lng: float, uid: str = Depends(get_curr
     level = _score_to_level(score)
 
     messages = {
-        CongestionLevel.GREEN: "Traffic is flowing smoothly",
-        CongestionLevel.YELLOW: "Moderate congestion — allow extra time",
-        CongestionLevel.RED: "Heavy congestion — consider alternate routes",
+        CongestionLevel.LOW: "Traffic is flowing smoothly",
+        CongestionLevel.MEDIUM: "Moderate congestion — allow extra time",
+        CongestionLevel.HIGH: "Heavy congestion — consider alternate routes",
+        CongestionLevel.SEVERE: "Severe congestion — avoid area if possible",
     }
 
     return TrafficStatusResponse(

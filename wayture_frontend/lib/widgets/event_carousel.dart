@@ -42,6 +42,7 @@ class _EventCarouselState extends State<EventCarousel> {
   void _startAutoScroll() {
     _autoScrollTimer?.cancel();
     _autoScrollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (!mounted) return;
       final events = _visibleEvents;
       if (events.length <= 1 || !_pageController.hasClients) return;
       final next = (_currentPage + 1) % events.length;
@@ -95,7 +96,9 @@ class _EventCarouselState extends State<EventCarousel> {
           child: PageView.builder(
             controller: _pageController,
             itemCount: events.length,
-            onPageChanged: (i) => setState(() => _currentPage = i),
+            onPageChanged: (i) {
+              if (mounted) setState(() => _currentPage = i);
+            },
             itemBuilder: (context, index) {
               final event = events[index];
               final color = _severityColor(event.impactLevel);
@@ -149,12 +152,14 @@ class _EventCarouselState extends State<EventCarousel> {
                         GestureDetector(
                           onTap: () {
                             final origIdx = widget.events.indexOf(event);
-                            setState(() {
-                              _dismissedIndices.add(origIdx);
-                              if (_currentPage >= _visibleEvents.length) {
-                                _currentPage = 0;
-                              }
-                            });
+                            if (mounted) {
+                              setState(() {
+                                _dismissedIndices.add(origIdx);
+                                if (_currentPage >= _visibleEvents.length) {
+                                  _currentPage = 0;
+                                }
+                              });
+                            }
                           },
                           child: const Icon(Icons.close,
                               color: Colors.white38, size: 18),

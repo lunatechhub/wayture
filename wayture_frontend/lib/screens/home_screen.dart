@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -11,7 +12,10 @@ import 'package:wayture/config/theme.dart';
 import 'package:wayture/models/kathmandu_event.dart';
 import 'package:wayture/models/report_model.dart';
 import 'package:wayture/models/route_model.dart';
+import 'package:wayture/models/traffic_model.dart';
 import 'package:wayture/services/api_service.dart';
+import 'package:wayture/services/firestore_service.dart';
+import 'package:wayture/services/location_service.dart';
 import 'package:wayture/services/mock_data.dart';
 import 'package:wayture/services/connection_manager.dart';
 import 'package:wayture/services/route_service.dart';
@@ -34,8 +38,497 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   final MapController _mapController = MapController();
 
-  // ── Default traffic polylines ──
-  List<Polyline> get _trafficPolylines => [
+  // ── Live traffic data from Firestore ──
+  List<TrafficData> _liveTraffic = [];
+  List<Map<String, dynamic>> _liveReports = [];
+  StreamSubscription? _trafficSub;
+  StreamSubscription? _reportsSub;
+
+  // ── User location ──
+  LatLng? _userLocation;
+  StreamSubscription<Position>? _positionSub;
+  bool _locationDenied = false;
+  bool _locationLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _listenToLiveTraffic();
+    _listenToLiveReports();
+    _fetchTrafficFromApi();
+    _initLocation();
+  }
+
+  @override
+  void dispose() {
+    _trafficSub?.cancel();
+    _reportsSub?.cancel();
+    _positionSub?.cancel();
+    _mapController.dispose();
+    super.dispose();
+  }
+
+  // ── Location bootstrap ──
+  Future<void> _initLocation() async {
+    final fix = await LocationService.getCurrentPosition(withAddress: false);
+    if (!mounted) return;
+
+    if (!fix.isSuccess) {
+      setState(() {
+        _locationLoading = false;
+        _locationDenied = fix.result == LocationResult.permissionDenied ||
+            fix.result == LocationResult.permissionDeniedForever;
+      });
+      return;
+    }
+
+    final pos = fix.position!;
+    final latLng = LatLng(pos.latitude, pos.longitude);
+    setState(() {
+      _userLocation = latLng;
+      _locationLoading = false;
+      _locationDenied = false;
+    });
+    _mapController.move(latLng, 15);
+    _startLocationStream();
+  }
+
+  void _startLocationStream() {
+    _positionSub?.cancel();
+    _positionSub = LocationService.positionStream(distanceFilterMeters: 10)
+        .listen((pos) {
+      if (!mounted) return;
+      setState(() => _userLocation = LatLng(pos.latitude, pos.longitude));
+    }, onError: (e) {
+      debugPrint('Position stream error: $e');
+    });
+  }
+
+  Future<void> _locateMe() async {
+    if (_userLocation != null) {
+      _mapController.move(_userLocation!, 16);
+      return;
+    }
+    setState(() => _locationLoading = true);
+    await _initLocation();
+  }
+
+  Future<void> _requestLocationPermission() async {
+    setState(() {
+      _locationLoading = true;
+      _locationDenied = false;
+    });
+    await _initLocation();
+  }
+
+  void _listenToLiveTraffic() {
+    _trafficSub = FirestoreService.instance.realtimeTrafficStream().listen(
+      (data) {
+        if (!mounted) return;
+        setState(() {
+          _liveTraffic = data;
+        });
+      },
+      onError: (e) {
+        debugPrint('Live traffic stream error: $e');
+      },
+    );
+  }
+
+  void _listenToLiveReports() {
+    _reportsSub = FirestoreService.instance.communityReportsStream().listen(
+      (data) {
+        if (!mounted) return;
+        setState(() => _liveReports = data);
+      },
+      onError: (e) => debugPrint('Live reports stream error: $e'),
+    );
+  }
+
+  /// Fetch traffic from backend API as supplement when Firestore is empty.
+  Future<void> _fetchTrafficFromApi() async {
+    try {
+      final data = await ApiService.getRealtimeTraffic();
+      if (data != null && data.isNotEmpty && _liveTraffic.isEmpty && mounted) {
+        setState(() {
+          _liveTraffic = data.map((d) => TrafficData.fromJson(d)).toList();
+        });
+      }
+    } catch (e) {
+      debugPrint('API traffic fetch error: $e');
+    }
+  }
+
+  // ── Kathmandu hotspot locations — always visible on map ──
+  static const _kathmanduHotspots = [
+    {'name': 'Koteshwor',   'lat': 27.6788, 'lng': 85.3456},
+    {'name': 'Kalanki',     'lat': 27.6940, 'lng': 85.2816},
+    {'name': 'Chabahil',    'lat': 27.7167, 'lng': 85.3456},
+    {'name': 'Balaju',      'lat': 27.7343, 'lng': 85.3042},
+    {'name': 'Tinkune',     'lat': 27.6864, 'lng': 85.3456},
+    {'name': 'Ratnapark',   'lat': 27.7041, 'lng': 85.3145},
+    {'name': 'Baneshwor',   'lat': 27.6939, 'lng': 85.3330},
+    {'name': 'Maharajgunj', 'lat': 27.7369, 'lng': 85.3306},
+    {'name': 'Gongabu',     'lat': 27.7369, 'lng': 85.3128},
+    {'name': 'Thapathali',  'lat': 27.6926, 'lng': 85.3220},
+    {'name': 'Kalimati',    'lat': 27.6975, 'lng': 85.3020},
+    {'name': 'Gaushala',    'lat': 27.7119, 'lng': 85.3427},
+  ];
+
+  /// Markers that ALWAYS show on the map for Kathmandu hotspots.
+  /// If live data exists for a location, it uses real congestion color.
+  /// Otherwise it shows a neutral teal marker.
+  List<Marker> get _hotspotMarkers {
+    return _kathmanduHotspots.map((spot) {
+      final name = spot['name'] as String;
+      final lat = spot['lat'] as double;
+      final lng = spot['lng'] as double;
+
+      // Check if we have live data for this location
+      final liveMatch = _liveTraffic.where((tp) =>
+          tp.locationName.toLowerCase() == name.toLowerCase()).firstOrNull;
+
+      final color = liveMatch != null
+          ? _congestionColor(liveMatch.congestionLevel)
+          : const Color(0xFF00897B); // teal default
+      final level = liveMatch?.congestionLevel ?? 'monitoring';
+      final vehicles = liveMatch?.vehicleCount ?? 0;
+      final speed = liveMatch?.averageSpeedKmh ?? 0;
+
+      return Marker(
+        point: LatLng(lat, lng),
+        width: 56,
+        height: 56,
+        child: GestureDetector(
+          onTap: () {
+            if (liveMatch != null) {
+              _showTrafficInfo(liveMatch);
+            } else {
+              _showHotspotInfo(name, level, vehicles, speed);
+            }
+          },
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withAlpha(50),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: color, width: 2.5),
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withAlpha(60),
+                      blurRadius: 8,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Center(
+                  child: Icon(
+                    liveMatch != null ? Icons.traffic : Icons.location_on,
+                    color: color,
+                    size: 18,
+                  ),
+                ),
+              ),
+              Container(
+                margin: const EdgeInsets.only(top: 2),
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E).withAlpha(200),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  name,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 8,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }).toList();
+  }
+
+  void _showHotspotInfo(String name, String level, int vehicles, double speed) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(name,
+                style: const TextStyle(
+                    color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            _trafficInfoRow('Status', level.toUpperCase(),
+                const Color(0xFF00897B)),
+            if (vehicles > 0)
+              _trafficInfoRow('Vehicles', '$vehicles', Colors.white70),
+            if (speed > 0)
+              _trafficInfoRow('Avg Speed', '${speed.toStringAsFixed(0)} km/h',
+                  Colors.white70),
+            _trafficInfoRow('Source', 'Kathmandu Hotspot', Colors.white54),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Incident markers from LIVE Firestore community reports ──
+  List<Marker> get _liveIncidentMarkers {
+    return _liveReports.map((report) {
+      final lat = (report['latitude'] as num?)?.toDouble() ?? 0.0;
+      final lng = (report['longitude'] as num?)?.toDouble() ?? 0.0;
+      if (lat == 0.0 && lng == 0.0) return null;
+      final type = report['report_type'] ?? report['type'] ?? 'accident';
+      final desc = report['description'] ?? '';
+      final docId = report['id'] as String? ?? '';
+      return Marker(
+        point: LatLng(lat, lng),
+        width: 40,
+        height: 40,
+        child: GestureDetector(
+          onTap: () => _showLiveReportInfo(type, desc, lat, lng, docId),
+          child: Icon(
+            _iconForReportType(type),
+            color: _colorForReportType(type),
+            size: 30,
+          ),
+        ),
+      );
+    }).whereType<Marker>().toList();
+  }
+
+  Color _congestionColor(String level) {
+    switch (level) {
+      case 'severe':
+        return Colors.red.shade700;
+      case 'high':
+        return Colors.deepOrange;
+      case 'medium':
+        return Colors.amber.shade700;
+      default:
+        return Colors.green;
+    }
+  }
+
+  IconData _iconForReportType(String type) {
+    switch (type) {
+      case 'accident':
+        return Icons.car_crash;
+      case 'traffic_jam':
+        return Icons.traffic;
+      case 'road_closure':
+        return Icons.block;
+      case 'construction':
+        return Icons.construction;
+      case 'flooding':
+        return Icons.thunderstorm;
+      default:
+        return Icons.warning_amber;
+    }
+  }
+
+  Color _colorForReportType(String type) {
+    switch (type) {
+      case 'accident':
+        return Colors.red;
+      case 'traffic_jam':
+        return Colors.orange;
+      case 'road_closure':
+        return Colors.deepOrange;
+      case 'construction':
+        return Colors.brown;
+      case 'flooding':
+        return Colors.blueGrey;
+      default:
+        return Colors.purple;
+    }
+  }
+
+  void _showTrafficInfo(TrafficData tp) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              tp.locationName,
+              style: const TextStyle(
+                color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 12),
+            _trafficInfoRow('Congestion', tp.congestionLevel.toUpperCase(),
+                _congestionColor(tp.congestionLevel)),
+            _trafficInfoRow('Vehicles', '${tp.vehicleCount}', Colors.white70),
+            _trafficInfoRow('Avg Speed',
+                '${tp.averageSpeedKmh.toStringAsFixed(0)} km/h', Colors.white70),
+            _trafficInfoRow('Source', tp.source, Colors.white54),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _trafficInfoRow(String label, String value, Color valueColor) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white54, fontSize: 13)),
+          Text(value,
+              style: TextStyle(
+                  color: valueColor, fontWeight: FontWeight.w600, fontSize: 13)),
+        ],
+      ),
+    );
+  }
+
+  void _showLiveReportInfo(
+      String type, String desc, double lat, double lng, String docId) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40, height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Icon(_iconForReportType(type),
+                    color: _colorForReportType(type), size: 24),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    type.replaceAll('_', ' ').toUpperCase(),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            if (desc.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(desc,
+                  style: const TextStyle(color: Colors.white70, fontSize: 14)),
+            ],
+            const SizedBox(height: 16),
+            // Delete button — only if the report belongs to the current user
+            if (docId.isNotEmpty)
+              SizedBox(
+                width: double.infinity,
+                height: 44,
+                child: OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    side: const BorderSide(color: Colors.redAccent),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(context);
+                    try {
+                      await FirebaseFirestore.instance
+                          .collection('CommunityReports')
+                          .doc(docId)
+                          .delete();
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Report deleted'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Failed to delete: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                  icon: const Icon(Icons.delete_outline,
+                      color: Colors.redAccent, size: 18),
+                  label: const Text('Delete Report',
+                      style: TextStyle(color: Colors.redAccent)),
+                ),
+              ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Fallback mock polylines (only used when no live data) ──
+  List<Polyline> get _fallbackTrafficPolylines => [
         Polyline(
           points:
               MockData.greenRoute.map((p) => LatLng(p[0], p[1])).toList(),
@@ -55,24 +548,6 @@ class _HomeScreenState extends State<HomeScreen> {
           strokeWidth: 5,
         ),
       ];
-
-  List<Marker> get _incidentMarkers {
-    return MockData.reports.map((report) {
-      return Marker(
-        point: LatLng(report.latitude, report.longitude),
-        width: 40,
-        height: 40,
-        child: GestureDetector(
-          onTap: () => _showMarkerInfo(report),
-          child: Icon(
-            _iconForType(report.type),
-            color: _colorForType(report.type),
-            size: 30,
-          ),
-        ),
-      );
-    }).toList();
-  }
 
   // ── Route-specific polylines (shown after Find Routes) ──
   List<Polyline> _buildRoutePolylines(RouteService routeService) {
@@ -132,49 +607,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ),
       );
     }).toList();
-  }
-
-  IconData _iconForType(IncidentType type) {
-    switch (type) {
-      case IncidentType.accident:
-        return Icons.car_crash;
-      case IncidentType.trafficJam:
-        return Icons.traffic;
-      case IncidentType.roadBlock:
-        return Icons.block;
-      case IncidentType.protest:
-        return Icons.groups;
-      case IncidentType.construction:
-        return Icons.construction;
-      case IncidentType.weatherIssue:
-        return Icons.thunderstorm;
-    }
-  }
-
-  Color _colorForType(IncidentType type) {
-    switch (type) {
-      case IncidentType.accident:
-        return Colors.red;
-      case IncidentType.trafficJam:
-        return Colors.orange;
-      case IncidentType.roadBlock:
-        return Colors.deepOrange;
-      case IncidentType.protest:
-        return Colors.purple;
-      case IncidentType.construction:
-        return Colors.brown;
-      case IncidentType.weatherIssue:
-        return Colors.blueGrey;
-    }
-  }
-
-  void _showMarkerInfo(ReportModel report) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('${report.type.label} — ${report.location}'),
-        backgroundColor: AppColors.primary,
-      ),
-    );
   }
 
   void _openRoutePlanning({String? from, String? to}) {
@@ -263,8 +695,125 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
 
+          // Location permission banner — Pathao-style "Allow" prompt
+          if (!isNavigating && _locationDenied)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 72,
+              left: 16,
+              right: 16,
+              child: GestureDetector(
+                onTap: _requestLocationPermission,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1A1A2E).withAlpha(240),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                        color: AppColors.primary.withAlpha(80)),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(40),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.primary.withAlpha(40),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: const Icon(Icons.location_off_rounded,
+                            color: AppColors.primary, size: 22),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Location access needed',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            SizedBox(height: 2),
+                            Text(
+                              'Allow location to see traffic near you',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 11,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 8),
+                        decoration: BoxDecoration(
+                          color: AppColors.primary,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: const Text(
+                          'Allow',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+
+          // Location loading indicator
+          if (!isNavigating && _locationLoading)
+            Positioned(
+              top: MediaQuery.of(context).padding.top + 72,
+              left: 16,
+              right: 16,
+              child: Container(
+                padding: const EdgeInsets.symmetric(
+                    horizontal: 16, vertical: 10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF1A1A2E).withAlpha(230),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppColors.primary,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const Text(
+                      'Finding your location...',
+                      style: TextStyle(
+                          color: Colors.white70, fontSize: 13),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           // Event banner (below search bar, hidden during navigation)
-          if (!isNavigating)
+          if (!isNavigating && !_locationDenied && !_locationLoading)
             Positioned(
               top: MediaQuery.of(context).padding.top + 72,
               left: 16,
@@ -300,24 +849,27 @@ class _HomeScreenState extends State<HomeScreen> {
               child: TrafficLegend(),
             ),
 
-          // Connection status indicator
-          if (!isNavigating && connMgr.hasChecked)
+          // Connection status indicator — shows map source, not backend
+          if (!isNavigating)
             Positioned(
               bottom: mapMode == MapDisplayMode.colorCoded ? 60 : 16,
               left: 16,
               child: GestureDetector(
                 onTap: () async {
+                  if (!mounted) return;
+                  final messenger = ScaffoldMessenger.of(context);
                   final result = await connMgr.checkNow();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(result
-                            ? 'Connected to server'
-                            : 'Offline — using local data'),
-                        backgroundColor: result ? Colors.green : Colors.orange,
-                      ),
-                    );
-                  }
+                  if (!mounted) return;
+                  messenger.showSnackBar(
+                    SnackBar(
+                      content: Text(result
+                          ? 'Backend connected — live traffic data'
+                          : 'Map online — backend not reachable'),
+                      backgroundColor: result
+                          ? Colors.green
+                          : const Color(0xFF00897B),
+                    ),
+                  );
                 },
                 child: Container(
                   padding:
@@ -336,17 +888,17 @@ class _HomeScreenState extends State<HomeScreen> {
                         decoration: BoxDecoration(
                           color: connMgr.isOnline
                               ? Colors.green
-                              : Colors.red,
+                              : const Color(0xFF00897B),
                           shape: BoxShape.circle,
                         ),
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        connMgr.isOnline ? 'Live' : 'Offline',
+                        connMgr.isOnline ? 'Live' : 'Online',
                         style: TextStyle(
                           color: connMgr.isOnline
                               ? Colors.green
-                              : Colors.red,
+                              : const Color(0xFF00897B),
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
                         ),
@@ -375,16 +927,14 @@ class _HomeScreenState extends State<HomeScreen> {
                   const SizedBox(height: 10),
                   FloatingActionButton(
                     heroTag: 'location_fab',
-                    onPressed: () {
-                      _mapController.move(
-                        const LatLng(AppConstants.kathmanduLat,
-                            AppConstants.kathmanduLng),
-                        15,
-                      );
-                    },
+                    onPressed: _locateMe,
                     backgroundColor: AppColors.primary,
-                    child: const Icon(Icons.my_location,
-                        color: Colors.white),
+                    child: Icon(
+                      _userLocation != null
+                          ? Icons.my_location
+                          : Icons.location_searching,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
@@ -429,6 +979,7 @@ class _HomeScreenState extends State<HomeScreen> {
       bool isDark, MapDisplayMode mapMode, RouteService routeService) {
     final routePolylines = _buildRoutePolylines(routeService);
     final hasRoutePolylines = routePolylines.isNotEmpty;
+    final hasLiveReports = _liveReports.isNotEmpty;
 
     return FlutterMap(
       mapController: _mapController,
@@ -441,25 +992,81 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       children: [
         TileLayer(
-          urlTemplate: isDark
-              ? AppConstants.osmDarkTileUrl
-              : AppConstants.osmTileUrl,
+          urlTemplate: AppConstants.osmTileUrl,
           userAgentPackageName: 'com.wayture.app',
+          maxZoom: 18,
+          keepBuffer: 5,
+          evictErrorTileStrategy: EvictErrorTileStrategy.notVisibleRespectMargin,
         ),
-        // Default traffic polylines (hidden when route polylines are shown)
+        // Traffic polylines (shown when no route search is active)
         if (!hasRoutePolylines && mapMode == MapDisplayMode.colorCoded)
-          PolylineLayer(polylines: _trafficPolylines),
+          PolylineLayer(polylines: _fallbackTrafficPolylines),
         if (!hasRoutePolylines && mapMode == MapDisplayMode.simple)
           PolylineLayer(polylines: _simplePolylines),
         // Route polylines (from Find Routes)
         if (hasRoutePolylines) PolylineLayer(polylines: routePolylines),
-        // Default incident markers
-        if (mapMode == MapDisplayMode.colorCoded && !hasRoutePolylines)
-          MarkerLayer(markers: _incidentMarkers),
+        // ALWAYS show Kathmandu hotspot markers (colored by live data if available)
+        if (!hasRoutePolylines && mapMode != MapDisplayMode.minimal)
+          MarkerLayer(markers: _hotspotMarkers),
+        // LIVE community report markers from Firestore
+        if (!hasRoutePolylines && hasLiveReports &&
+            mapMode == MapDisplayMode.colorCoded)
+          MarkerLayer(markers: _liveIncidentMarkers),
         // Route-specific incident markers
         if (hasRoutePolylines)
           MarkerLayer(markers: _buildRouteIncidentMarkers()),
+        // User location marker — pulsing blue dot
+        if (_userLocation != null)
+          MarkerLayer(markers: [_buildUserLocationMarker()]),
       ],
+    );
+  }
+
+  Marker _buildUserLocationMarker() {
+    return Marker(
+      point: _userLocation!,
+      width: 48,
+      height: 48,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          // Outer pulse ring
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary.withAlpha(30),
+            ),
+          ),
+          // Middle ring
+          Container(
+            width: 28,
+            height: 28,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary.withAlpha(60),
+            ),
+          ),
+          // Inner dot
+          Container(
+            width: 16,
+            height: 16,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: AppColors.primary,
+              border: Border.all(color: Colors.white, width: 3),
+              boxShadow: [
+                BoxShadow(
+                  color: AppColors.primary.withAlpha(100),
+                  blurRadius: 8,
+                  spreadRadius: 2,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -641,6 +1248,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ── Route Planning Bottom Sheet ──
   void _showRoutePlanningSheet({String? prefillFrom, String? prefillTo}) {
+    // Capture service reference BEFORE opening the sheet so we don't
+    // use context.read inside the callback (widget may be disposed).
+    final routeService = context.read<RouteService>();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -649,16 +1259,15 @@ class _HomeScreenState extends State<HomeScreen> {
         prefillFrom: prefillFrom,
         prefillTo: prefillTo,
         onNavigate: (index, name) {
-          final routeService = context.read<RouteService>();
           routeService.startNavigation(index, name);
-          _highlightRoute(index);
+          _highlightRoute(index, routeService);
         },
       ),
     );
   }
 
-  void _highlightRoute(int index) {
-    final routeService = context.read<RouteService>();
+  void _highlightRoute(int index, [RouteService? rs]) {
+    final routeService = rs ?? context.read<RouteService>();
     final routes = routeService.currentRoutes;
     if (index < routes.length && routes[index].polylinePoints.isNotEmpty) {
       final points = routes[index].polylinePoints;
@@ -672,11 +1281,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   // ── Add Report Bottom Sheet ──
-  void _showAddReportSheet() {
+  void _showAddReportSheet() async {
     IncidentType selectedType = IncidentType.accident;
     final descController = TextEditingController();
 
-    showModalBottomSheet(
+    try {
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -854,9 +1464,8 @@ class _HomeScreenState extends State<HomeScreen> {
                                     .instance.currentUser?.uid ??
                                 'anonymous';
                             await FirebaseFirestore.instance
-                                .collection('communityReports')
+                                .collection('CommunityReports')
                                 .add({
-                              'userid': uid,
                               'uid': uid,
                               'type': backendType,
                               'report_type': backendType,
@@ -898,5 +1507,8 @@ class _HomeScreenState extends State<HomeScreen> {
         );
       },
     );
+    } finally {
+      descController.dispose();
+    }
   }
 }

@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
-import 'package:wayture/screens/signup_screen.dart';
-import 'package:wayture/screens/main_screen.dart';
-import 'package:wayture/screens/forgot_password_screen.dart';
+import 'package:wayture/core/app_routes.dart';
 import 'package:wayture/services/auth_service.dart';
 
 /// Login screen with glassmorphism form card — responsive layout.
@@ -32,7 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
 
     final auth = context.read<AuthService>();
     final error = await auth.signIn(
@@ -48,12 +46,45 @@ class _LoginScreenState extends State<LoginScreen> {
         SnackBar(content: Text(error), backgroundColor: Colors.red),
       );
     } else {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(builder: (_) => const MainScreen()),
-      );
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(_successSnack('Welcome back! Logged in successfully'));
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
     }
   }
+
+  Future<void> _signInWithGoogle() async {
+    if (mounted) setState(() => _isLoading = true);
+
+    final auth = context.read<AuthService>();
+    final error = await auth.signInWithGoogle();
+
+    if (!mounted) return;
+    setState(() => _isLoading = false);
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error), backgroundColor: Colors.red),
+      );
+    } else {
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(_successSnack('Welcome back! Logged in successfully'));
+      Navigator.pushReplacementNamed(context, AppRoutes.home);
+    }
+  }
+
+  SnackBar _successSnack(String msg) => SnackBar(
+        content: Row(children: [
+          const Icon(Icons.check_circle_outline, color: Colors.white, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(msg, style: const TextStyle(color: Colors.white))),
+        ]),
+        backgroundColor: const Color(0xFF2E7D32),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        duration: const Duration(seconds: 2),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -151,8 +182,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       _hidePassword ? Icons.visibility_off : Icons.visibility,
                                       color: Colors.white70,
                                     ),
-                                    onPressed: () =>
-                                        setState(() => _hidePassword = !_hidePassword),
+                                    onPressed: () {
+                                      if (mounted) setState(() => _hidePassword = !_hidePassword);
+                                    },
                                   ),
                                 ),
                                 validator: (v) {
@@ -173,8 +205,9 @@ class _LoginScreenState extends State<LoginScreen> {
                                       Checkbox(
                                         value: _rememberMe,
                                         onChanged: !_isLoading
-                                            ? (v) =>
-                                                setState(() => _rememberMe = v ?? false)
+                                            ? (v) {
+                                                if (mounted) setState(() => _rememberMe = v ?? false);
+                                              }
                                             : null,
                                         checkColor: Colors.black,
                                         activeColor: Colors.white,
@@ -185,14 +218,11 @@ class _LoginScreenState extends State<LoginScreen> {
                                   ),
                                   TextButton(
                                     onPressed: !_isLoading
-                                        ? () => Navigator.push(
+                                        ? () => Navigator.pushNamed(
                                               context,
-                                              MaterialPageRoute(
-                                                builder: (_) => ForgotPasswordScreen(
-                                                  initialEmail:
-                                                      _emailController.text.trim(),
-                                                ),
-                                              ),
+                                              AppRoutes.forgotPassword,
+                                              arguments:
+                                                  _emailController.text.trim(),
                                             )
                                         : null,
                                     child: const Text(
@@ -235,13 +265,71 @@ class _LoginScreenState extends State<LoginScreen> {
                                 ),
                               ),
                               const SizedBox(height: 16),
+                              // Divider with OR
+                              Row(
+                                children: [
+                                  Expanded(child: Divider(color: Colors.white38, thickness: 0.5)),
+                                  const Padding(
+                                    padding: EdgeInsets.symmetric(horizontal: 12),
+                                    child: Text('OR', style: TextStyle(color: Colors.white54, fontSize: 12)),
+                                  ),
+                                  Expanded(child: Divider(color: Colors.white38, thickness: 0.5)),
+                                ],
+                              ),
+                              const SizedBox(height: 16),
+                              // Google Sign-In button
+                              SizedBox(
+                                width: double.infinity,
+                                height: 48,
+                                child: OutlinedButton(
+                                  style: OutlinedButton.styleFrom(
+                                    side: const BorderSide(color: Colors.white38),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    backgroundColor: Colors.white.withAlpha(25),
+                                  ),
+                                  onPressed: _isLoading ? null : _signInWithGoogle,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      // Google "G" logo using text (no external asset needed)
+                                      Container(
+                                        width: 24,
+                                        height: 24,
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Center(
+                                          child: Text(
+                                            'G',
+                                            style: TextStyle(
+                                              color: Color(0xFF4285F4),
+                                              fontSize: 16,
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      const Text(
+                                        'Continue with Google',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 15,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(height: 16),
                               TextButton(
                                 onPressed: !_isLoading
-                                    ? () => Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                              builder: (_) => const SignupScreen()),
-                                        )
+                                    ? () => Navigator.pushNamed(
+                                        context, AppRoutes.register)
                                     : null,
                                 child: const Text(
                                   "Don't have an account? Sign up",

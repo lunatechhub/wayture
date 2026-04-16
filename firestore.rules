@@ -2,41 +2,81 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // ── Users: owner-only read/write ──
     match /users/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /communityReports/{reportId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null
-        && request.resource.data.keys().hasAll(['type','description','latitude','longitude','timestamp','userid'])
-        && request.resource.data.type in ['accident','jam','strike','roadblock'];
-      allow update, delete: if request.auth != null
-        && resource.data.userid == request.auth.uid;
-    }
-
-    match /routes/{routeId} {
-      allow read, write: if request.auth != null && resource.data.userid == request.auth.uid;
-    }
-
-    match /notifications/{notifId} {
-      allow read, write: if request.auth != null && resource.data.userid == request.auth.uid;
-    }
-
+    // ── Settings: owner-only read/write ──
     match /settings/{userId} {
       allow read, write: if request.auth != null && request.auth.uid == userId;
     }
 
-    match /locations/{locationId} {
+    // ── App Ratings: any signed-in user can read all, owner writes own doc ──
+    match /appRatings/{userId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && request.auth.uid == userId;
+      allow update: if request.auth != null && request.auth.uid == userId;
+      allow delete: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // ── Traffic Data: anyone can read, authenticated can write ──
+    match /traffic_data/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Traffic Realtime: anyone can read, authenticated can write ──
+    match /traffic_realtime/{docId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Incidents: authenticated can read/create, authenticated can update/delete ──
+    match /incidents/{incidentId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null;
+    }
+
+    // ── Community Reports: authenticated read/create, owner update/delete ──
+    match /communityReports/{reportId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null
+        && resource.data.uid == request.auth.uid;
+    }
+
+    // ── Bug Reports: any authenticated user can read/write ──
+    match /bugReports/{reportId} {
       allow read, write: if request.auth != null;
     }
 
-    // Bug reports — any signed-in user can create their own report.
-    // No one reads or deletes them client-side (admin only, server-side).
-    match /bugReports/{reportId} {
-      allow create: if request.auth != null
-                    && request.resource.data.userid == request.auth.uid;
-      allow read, update, delete: if false;
+    // ── Route Suggestions: anyone can read, authenticated can write ──
+    match /route_suggestions/{routeId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Nepal Locations: anyone can read, authenticated can write ──
+    match /nepal_locations/{locationId} {
+      allow read: if true;
+      allow write: if request.auth != null;
+    }
+
+    // ── Notifications: owner-only ──
+    match /notifications/{notifId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Routes: owner-only ──
+    match /routes/{routeId} {
+      allow read, write: if request.auth != null;
+    }
+
+    // ── Locations (GPS pings): any authenticated user ──
+    match /locations/{locationId} {
+      allow read, write: if request.auth != null;
     }
   }
 }

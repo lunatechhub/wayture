@@ -37,7 +37,7 @@ class _TimePickerRowState extends State<TimePickerRow> {
   }
 
   void _selectOption(DepartureOption option) async {
-    setState(() => _selectedOption = option);
+    if (mounted) setState(() => _selectedOption = option);
 
     switch (option) {
       case DepartureOption.leaveNow:
@@ -66,7 +66,7 @@ class _TimePickerRowState extends State<TimePickerRow> {
           widget.onTimeChanged(picked);
         } else {
           // User cancelled — revert to Leave Now
-          setState(() => _selectedOption = DepartureOption.leaveNow);
+          if (mounted) setState(() => _selectedOption = DepartureOption.leaveNow);
         }
     }
   }

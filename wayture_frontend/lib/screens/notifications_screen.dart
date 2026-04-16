@@ -36,11 +36,13 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
 
   void _markAllRead() {
     ApiService.markAllNotificationsRead();
-    setState(() {
-      for (final n in _notifications) {
-        n.isRead = true;
-      }
-    });
+    if (mounted) {
+      setState(() {
+        for (final n in _notifications) {
+          n.isRead = true;
+        }
+      });
+    }
   }
 
   @override
@@ -133,11 +135,11 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
                             return NotificationCard(
                               notification: _notifications[index],
                               onDismiss: () {
-                                setState(() => _notifications.removeAt(index));
+                                if (mounted) setState(() => _notifications.removeAt(index));
                               },
                               onTap: () {
                                 ApiService.markNotificationRead(_notifications[index].id);
-                                setState(() => _notifications[index].isRead = true);
+                                if (mounted) setState(() => _notifications[index].isRead = true);
                               },
                             );
                           },

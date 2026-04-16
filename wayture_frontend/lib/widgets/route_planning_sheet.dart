@@ -1,8 +1,10 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/models/route_model.dart';
+import 'package:wayture/services/firestore_service.dart';
 import 'package:wayture/services/route_service.dart';
 import 'package:wayture/widgets/route_alert_banner.dart';
 import 'package:wayture/widgets/route_card.dart';
@@ -143,6 +145,7 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
       );
       return;
     }
+    if (!mounted) return;
     setState(() {
       _isLoading = true;
       _showResults = false;
@@ -166,6 +169,7 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
 
   void _swapLocations() {
     if (_toLocation == null) return;
+    if (!mounted) return;
     setState(() {
       final temp = _fromLocation;
       _fromLocation = _toLocation!;
@@ -322,8 +326,9 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                 children: [
                   // From
                   GestureDetector(
-                    onTap: () =>
-                        setState(() => _view = _SheetView.fromPicker),
+                    onTap: () {
+                      if (mounted) setState(() => _view = _SheetView.fromPicker);
+                    },
                     child: _locationField(
                       label: 'From',
                       text: _fromLocation,
@@ -336,7 +341,7 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                     onTap: () {
                       _searchCtrl.clear();
                       _searchQuery = '';
-                      setState(() => _view = _SheetView.toSearch);
+                      if (mounted) setState(() => _view = _SheetView.toSearch);
                       WidgetsBinding.instance.addPostFrameCallback((_) {
                         _searchFocus.requestFocus();
                       });
@@ -379,10 +384,12 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
         TimePickerRow(
           selectedTime: _departureTime,
           onTimeChanged: (time) {
-            setState(() {
-              _departureTime = time;
-              _showResults = false;
-            });
+            if (mounted) {
+              setState(() {
+                _departureTime = time;
+                _showResults = false;
+              });
+            }
           },
         ),
 
@@ -423,6 +430,7 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
             history: routeService.routeHistory,
             favorites: routeService.favorites,
             onItemTap: (from, to) {
+              if (!mounted) return;
               setState(() {
                 _fromLocation = from;
                 _toLocation = to;
@@ -513,7 +521,7 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                   Navigator.pop(context);
                   widget.onNavigate(i, _routes[i].name);
                 },
-                onSave: () {
+                onSave: () async {
                   // Quick-add to history as favorite
                   routeService.addToHistory(
                     _fromLocation,
@@ -521,6 +529,37 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                     _routes[i].name,
                   );
                   routeService.toggleFavorite(0); // Just added at index 0
+
+                  final messenger = ScaffoldMessenger.of(context);
+
+                  // Persist to Firestore
+                  final uid = FirebaseAuth.instance.currentUser?.uid;
+                  if (uid != null) {
+                    await FirestoreService.instance.saveRoute(
+                      uid: uid,
+                      from: _fromLocation,
+                      to: _toLocation!,
+                      routeName: _routes[i].name,
+                    );
+                  }
+                  if (context.mounted) {
+                    messenger
+                      ..clearSnackBars()
+                      ..showSnackBar(SnackBar(
+                        content: const Row(children: [
+                          Icon(Icons.bookmark_added_rounded,
+                              color: Colors.white, size: 20),
+                          SizedBox(width: 10),
+                          Text('Route saved!',
+                              style: TextStyle(color: Colors.white)),
+                        ]),
+                        backgroundColor: AppColors.primary,
+                        behavior: SnackBarBehavior.floating,
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                        duration: const Duration(seconds: 2),
+                      ));
+                  }
                 },
               ),
             );
@@ -543,7 +582,9 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
         Row(
           children: [
             GestureDetector(
-              onTap: () => setState(() => _view = _SheetView.form),
+              onTap: () {
+                if (mounted) setState(() => _view = _SheetView.form);
+              },
               child: Container(
                 padding: const EdgeInsets.all(6),
                 decoration: BoxDecoration(
@@ -596,11 +637,14 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                     ? const Icon(Icons.check_circle,
                         color: AppColors.primary, size: 20)
                     : null,
-                onTap: () => setState(() {
-                  _fromLocation = loc.name;
-                  _view = _SheetView.form;
-                  _showResults = false;
-                }),
+                onTap: () {
+                  if (!mounted) return;
+                  setState(() {
+                    _fromLocation = loc.name;
+                    _view = _SheetView.form;
+                    _showResults = false;
+                  });
+                },
               ),
               const Divider(color: Colors.white12, height: 1),
             ],
@@ -629,7 +673,9 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
               Row(
                 children: [
                   GestureDetector(
-                    onTap: () => setState(() => _view = _SheetView.form),
+                    onTap: () {
+                      if (mounted) setState(() => _view = _SheetView.form);
+                    },
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
@@ -658,8 +704,9 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                           border: InputBorder.none,
                           icon: Icon(Icons.search, color: Colors.white38),
                         ),
-                        onChanged: (v) =>
-                            setState(() => _searchQuery = v),
+                        onChanged: (v) {
+                          if (mounted) setState(() => _searchQuery = v);
+                        },
                       ),
                     ),
                   ),
@@ -707,11 +754,14 @@ class _RoutePlanningSheetState extends State<RoutePlanningSheet> {
                         style: const TextStyle(
                             color: Colors.white24, fontSize: 12),
                       ),
-                      onTap: () => setState(() {
-                        _toLocation = loc.name;
-                        _view = _SheetView.form;
-                        _showResults = false;
-                      }),
+                      onTap: () {
+                        if (!mounted) return;
+                        setState(() {
+                          _toLocation = loc.name;
+                          _view = _SheetView.form;
+                          _showResults = false;
+                        });
+                      },
                     );
                   },
                 ),

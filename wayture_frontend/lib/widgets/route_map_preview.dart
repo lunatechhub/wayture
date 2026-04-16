@@ -126,7 +126,7 @@ class _RouteMapPreviewState extends State<RouteMapPreview> {
                   padding: const EdgeInsets.symmetric(horizontal: 4),
                   child: GestureDetector(
                     onTap: () {
-                      setState(() => _highlightedIndex = i);
+                      if (mounted) setState(() => _highlightedIndex = i);
                       widget.onRouteTapped?.call(i);
                     },
                     child: Container(

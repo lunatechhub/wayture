@@ -9,8 +9,11 @@ import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
 import 'package:wayture/config/theme.dart';
 import 'package:wayture/screens/login_screen.dart';
+import 'package:wayture/screens/profile_screen.dart';
 import 'package:wayture/services/auth_service.dart';
 import 'package:wayture/services/theme_service.dart';
+import 'package:wayture/services/api_service.dart';
+import 'package:wayture/services/firestore_service.dart';
 import 'package:wayture/widgets/custom_text_field.dart';
 
 /// Settings screen — glassmorphism cards over sunset background.
@@ -34,6 +37,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _currentRating = 0;
   String _currentFeedback = '';
 
+  // Saved routes count
+  int _savedRoutesCount = 0;
+
+  // Aggregated rating summary (fetched from Firestore/backend)
+  double _averageRating = 0.0;
+  int _totalRatings = 0;
+  bool _ratingsLoaded = false;
+
   final _mapDisplayOptions = ['Color-coded', 'Simple', 'Minimal'];
   static const _mapDisplayDescriptions = [
     'Traffic density with colored routes',
@@ -52,6 +63,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadSettingsFromFirestore();
     _loadProfileFromFirestore();
+    _loadRatingSummary();
+    _loadSavedRoutesCount();
   }
 
   // ── Firestore loaders ────────────────────────────────────
@@ -65,7 +78,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (uid == null) return;
     try {
       final doc = await FirebaseFirestore.instance
-          .collection('settings')
+          .collection('Settings')
           .doc(uid)
           .get();
       if (!doc.exists || !mounted) return;
@@ -91,7 +104,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (uid == null) return;
     try {
       final doc = await FirebaseFirestore.instance
-          .collection('users')
+          .collection('Users')
           .doc(uid)
           .get();
       if (!doc.exists || !mounted) return;
@@ -105,6 +118,49 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// Load aggregated rating data from Firestore so the settings screen can
+  /// show the app's average rating and the user's own rating.
+  Future<void> _loadRatingSummary() async {
+    try {
+      // Fetch from Firestore directly (real-time capable)
+      final summary = await FirestoreService.instance.getRatingSummary();
+      if (!mounted) return;
+      setState(() {
+        _averageRating = (summary['average_stars'] as num?)?.toDouble() ?? 0.0;
+        _totalRatings = (summary['total_ratings'] as num?)?.toInt() ?? 0;
+        _ratingsLoaded = true;
+      });
+
+      // Also try fetching the user's own rating from appRatings collection
+      final uid = _uid;
+      if (uid != null) {
+        final myRating = await FirestoreService.instance.getUserRating(uid);
+        if (myRating != null && mounted) {
+          setState(() {
+            _currentRating = (myRating['stars'] as num?)?.toInt() ?? _currentRating;
+            _currentFeedback = myRating['feedback'] as String? ?? _currentFeedback;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('loadRatingSummary error: $e');
+    }
+  }
+
+  /// Load saved routes count from Firestore.
+  Future<void> _loadSavedRoutesCount() async {
+    final uid = _uid;
+    if (uid == null) return;
+    try {
+      final count =
+          await FirestoreService.instance.getSavedRoutesCount(uid);
+      if (!mounted) return;
+      setState(() => _savedRoutesCount = count);
+    } catch (e) {
+      debugPrint('savedRoutesCount error: $e');
+    }
+  }
+
   // ── Helpers ──────────────────────────────────────────────
 
   String _getDisplayName(AuthService auth) =>
@@ -114,6 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _profileEmail ?? auth.displayEmail;
 
   void _showSnackBar(String message) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -187,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     style: TextStyle(color: Colors.redAccent, fontSize: 15)),
                 onTap: () {
                   Navigator.pop(ctx);
-                  setState(() => _profileImage = null);
+                  if (mounted) setState(() => _profileImage = null);
                   sheetSetState(() {});
                   _showSnackBar('Profile photo removed');
                 },
@@ -208,7 +265,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         maxHeight: 512,
         imageQuality: 80,
       );
-      if (picked != null) {
+      if (picked != null && mounted) {
         setState(() => _profileImage = File(picked.path));
         sheetSetState(() {});
         _showSnackBar('Profile photo updated');
@@ -216,211 +273,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     } catch (e) {
       _showSnackBar('Could not access ${source == ImageSource.camera ? "camera" : "gallery"}');
     }
-  }
-
-  // ── FEATURE 1: Edit Profile ─────────────────────────────
-
-  void _showEditProfileSheet(AuthService auth) {
-    final nameCtrl = TextEditingController(text: _getDisplayName(auth));
-    final emailCtrl = TextEditingController(text: _getDisplayEmail(auth));
-    final phoneCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, sheetSetState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(217),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
-            ),
-            padding: const EdgeInsets.all(24),
-            child: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Handle bar
-                    Container(
-                      width: 40,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 20),
-                      decoration: BoxDecoration(
-                        color: Colors.white38,
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                    const Text(
-                      'Edit Profile',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-
-                    // Tappable avatar with camera overlay — picks image
-                    GestureDetector(
-                      onTap: () => _showImageSourcePicker(sheetSetState),
-                      child: Stack(
-                        children: [
-                          CircleAvatar(
-                            radius: 40,
-                            backgroundColor: AppColors.primary.withAlpha(80),
-                            backgroundImage: _profileImage != null
-                                ? FileImage(_profileImage!)
-                                : null,
-                            child: _profileImage == null
-                                ? Text(
-                                    nameCtrl.text.isNotEmpty
-                                        ? nameCtrl.text[0].toUpperCase()
-                                        : 'U',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 30,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  )
-                                : null,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(6),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary,
-                                shape: BoxShape.circle,
-                                border:
-                                    Border.all(color: Colors.black, width: 2),
-                              ),
-                              child: const Icon(Icons.camera_alt,
-                                  color: Colors.white, size: 16),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Full Name
-                    CustomTextField(
-                      controller: nameCtrl,
-                      hintText: 'Full Name',
-                      prefixIcon: const Icon(Icons.person_outline,
-                          color: Colors.white70),
-                      validator: (v) => (v == null || v.trim().isEmpty)
-                          ? 'Name is required'
-                          : null,
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Email
-                    CustomTextField(
-                      controller: emailCtrl,
-                      hintText: 'Email',
-                      keyboardType: TextInputType.emailAddress,
-                      prefixIcon: const Icon(Icons.email_outlined,
-                          color: Colors.white70),
-                      validator: (v) {
-                        if (v == null || v.trim().isEmpty) {
-                          return 'Email is required';
-                        }
-                        if (!v.contains('@') || !v.contains('.')) {
-                          return 'Invalid email format';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 14),
-
-                    // Phone (optional)
-                    CustomTextField(
-                      controller: phoneCtrl,
-                      hintText: 'Phone (optional)',
-                      keyboardType: TextInputType.phone,
-                      prefixIcon: const Icon(Icons.phone_outlined,
-                          color: Colors.white70),
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Save Changes button
-                    SizedBox(
-                      width: double.infinity,
-                      height: 48,
-                      child: ElevatedButton(
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: Colors.black,
-                          shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(14)),
-                          elevation: 0,
-                        ),
-                        onPressed: () async {
-                          if (!formKey.currentState!.validate()) return;
-                          final newName = nameCtrl.text.trim();
-                          final newEmail = emailCtrl.text.trim();
-                          final newPhone = phoneCtrl.text.trim();
-
-                          setState(() {
-                            _profileName = newName;
-                            _profileEmail = newEmail;
-                          });
-
-                          // Persist to Firestore users/{uid} so the profile
-                          // survives restarts and is visible to the backend.
-                          final uid = _uid;
-                          if (uid != null) {
-                            try {
-                              await FirebaseFirestore.instance
-                                  .collection('users')
-                                  .doc(uid)
-                                  .set({
-                                'name': newName,
-                                'email': newEmail,
-                                if (newPhone.isNotEmpty) 'phone': newPhone,
-                                'updatedAt':
-                                    FieldValue.serverTimestamp(),
-                              }, SetOptions(merge: true));
-                            } catch (e) {
-                              debugPrint('profile save error: $e');
-                            }
-                          }
-
-                          if (!context.mounted) return;
-                          Navigator.pop(ctx);
-                          _showSnackBar('Profile updated successfully');
-                        },
-                        child: const Text(
-                          'Save Changes',
-                          style: TextStyle(
-                              fontSize: 16, fontWeight: FontWeight.w600),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-
-                    // Cancel
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('Cancel',
-                          style: TextStyle(color: Colors.white60, fontSize: 14)),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
   }
 
   // ── FEATURE 5: Language Picker ──────────────────────────
@@ -476,7 +328,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ? const Icon(Icons.check_circle, color: AppColors.primary)
           : const Icon(Icons.radio_button_unchecked, color: Colors.white38),
       onTap: () async {
-        setState(() => _selectedLanguage = language);
+        if (mounted) setState(() => _selectedLanguage = language);
         await _saveSetting('language', language);
         if (!ctx.mounted) return;
         Navigator.pop(ctx);
@@ -492,7 +344,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (uid == null) return;
     try {
       await FirebaseFirestore.instance
-          .collection('settings')
+          .collection('Settings')
           .doc(uid)
           .set({
         key: value,
@@ -505,70 +357,398 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── FEATURE 6: About Wayture ────────────────────────────
 
+  static const List<String> _changelogItems = [
+    'Real-time traffic congestion prediction',
+    'Community incident reporting with upvotes',
+    'OSRM route planning with alternates',
+    'AI-powered insights via Groq LLaMA',
+    'Live weather integration via Open-Meteo',
+    'Dark / Light theme support',
+  ];
+
+  static const String _privacyPolicyText =
+      'Wayture collects location data solely for traffic prediction and '
+      'navigation. We do not sell or share your personal data with third '
+      'parties. Location data is processed in real-time and is not stored '
+      'beyond your active session. Community reports are anonymized before '
+      'storage.\n\nFor questions contact: wayture.support@gmail.com';
+
+  static const String _termsOfServiceText =
+      'By using Wayture you agree to use the app for lawful purposes only. '
+      'Traffic predictions are estimates and should not replace your own '
+      'judgment while driving. The app is provided as-is for academic and '
+      'personal use.\n\nWayture © 2025 Luna Bhattarai';
+
   void _showAboutWayture() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => DraggableScrollableSheet(
+        initialChildSize: 0.75,
+        minChildSize: 0.5,
+        maxChildSize: 0.95,
+        expand: false,
+        builder: (ctx, scrollController) => Container(
+          decoration: const BoxDecoration(
+            color: Color(0xFF1A1A2E),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          padding: const EdgeInsets.fromLTRB(20, 10, 20, 20),
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // ── Section A: Header ──
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Center(
+                  child: CircleAvatar(
+                    radius: 36,
+                    backgroundColor: Color(0xFF00897B),
+                    child: Text(
+                      'W',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 30,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Center(
+                  child: Text(
+                    'Wayture',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Center(
+                  child: Text(
+                    'Version ${AppConstants.appVersion}',
+                    style: const TextStyle(
+                        color: Colors.white60, fontSize: 13),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Center(
+                  child: Text(
+                    'Traffic Congestion Predictor for Kathmandu',
+                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Section B: Powered By ──
+                const Text(
+                  'POWERED BY',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: const [
+                    _PoweredByChip(
+                        icon: Icons.map_outlined, label: 'OpenStreetMap'),
+                    _PoweredByChip(
+                        icon: Icons.alt_route, label: 'OSRM Routing'),
+                    _PoweredByChip(
+                        icon: Icons.cloud_outlined, label: 'Open-Meteo'),
+                    _PoweredByChip(
+                        icon: Icons.storage_outlined, label: 'Firebase'),
+                    _PoweredByChip(
+                        icon: Icons.psychology_outlined, label: 'Groq AI'),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // ── Section C: Built For ──
+                const Text(
+                  'BUILT FOR',
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A3E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    children: const [
+                      _InfoRow(
+                          icon: Icons.school_outlined,
+                          text: 'BSc Final Year Project'),
+                      SizedBox(height: 10),
+                      _InfoRow(
+                          icon: Icons.location_city,
+                          text: 'University of Bedfordshire'),
+                      SizedBox(height: 10),
+                      _InfoRow(
+                          icon: Icons.person_outlined,
+                          text: 'Student: Luna Bhattarai'),
+                      SizedBox(height: 10),
+                      _InfoRow(
+                          icon: Icons.supervisor_account,
+                          text: 'Supervisor: Pawan KC'),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Section D: Links ──
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showPrivacyPolicy();
+                        },
+                        icon: const Icon(Icons.privacy_tip_outlined,
+                            size: 18),
+                        label: const Text('Privacy Policy',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white70,
+                          side: const BorderSide(color: Colors.white24),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                        ),
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _showTermsOfService();
+                        },
+                        icon: const Icon(Icons.article_outlined, size: 18),
+                        label: const Text('Terms of Service',
+                            style: TextStyle(fontSize: 12)),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+
+                // ── Section E: What's New ──
+                Text(
+                  "WHAT'S NEW IN V${AppConstants.appVersion}",
+                  style: const TextStyle(
+                    color: Colors.white54,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    letterSpacing: 0.5,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF2A2A3E),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      for (int i = 0; i < _changelogItems.length; i++) ...[
+                        _ChangelogRow(text: _changelogItems[i]),
+                        if (i < _changelogItems.length - 1)
+                          const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 24),
+
+                // ── Section F: Share & Footer ──
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: ElevatedButton.icon(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF00897B),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      elevation: 0,
+                    ),
+                    onPressed: () {
+                      ScaffoldMessenger.of(context)
+                        ..clearSnackBars()
+                        ..showSnackBar(
+                          const SnackBar(
+                            content: Text('Sharing coming soon!'),
+                          ),
+                        );
+                    },
+                    icon: const Icon(Icons.share, size: 18),
+                    label: const Text(
+                      'Share Wayture',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Center(
+                  child: Text(
+                    '© 2025 Wayture · Luna Bhattarai · University of Bedfordshire',
+                    style: TextStyle(color: Colors.white38, fontSize: 11),
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showPrivacyPolicy() {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: const Color(0xFF1A1A2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        contentPadding: const EdgeInsets.all(24),
-        // Wrap in SingleChildScrollView so the dialog content can scroll
-        // on short screens instead of overflowing vertically.
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const CircleAvatar(
-                radius: 32,
-                backgroundColor: AppColors.primary,
-                child: Text('W',
-                    style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold)),
-              ),
-              const SizedBox(height: 14),
-              const Text('Wayture',
-                  style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold)),
-              const SizedBox(height: 4),
-              Text('Version ${AppConstants.appVersion}',
-                  style:
-                      const TextStyle(color: Colors.white60, fontSize: 13)),
-              const SizedBox(height: 18),
-              const Text(
-                'Traffic Congestion Predictor for Kathmandu',
-                style: TextStyle(color: Colors.white70, fontSize: 13),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 18),
-              const Text('Built for BSc Final Year Project',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const Text('University of Bedfordshire',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const SizedBox(height: 8),
-              const Text('Student: Luna Bhattarai',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const Text('Supervisor: Pawan KC',
-                  style: TextStyle(color: Colors.white70, fontSize: 13)),
-              const SizedBox(height: 18),
-              Text(
-                '© 2025 Wayture. All rights reserved.',
-                style: TextStyle(
-                    color: Colors.white.withAlpha(100), fontSize: 11),
-              ),
-            ],
+        title: const Text(
+          'Privacy Policy',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const SingleChildScrollView(
+          child: Text(
+            _privacyPolicyText,
+            style: TextStyle(color: Colors.white70, fontSize: 13),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child:
-                const Text('OK', style: TextStyle(color: AppColors.primary)),
+            child: const Text('Close',
+                style: TextStyle(color: Color(0xFF00897B))),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showTermsOfService() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1A1A2E),
+        title: const Text(
+          'Terms of Service',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: const SingleChildScrollView(
+          child: Text(
+            _termsOfServiceText,
+            style: TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Close',
+                style: TextStyle(color: Color(0xFF00897B))),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWhatsNew() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF1A1A2E),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        padding: const EdgeInsets.fromLTRB(20, 10, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
+              child: Container(
+                width: 40,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 20),
+                decoration: BoxDecoration(
+                  color: Colors.white24,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              "What's New in v${AppConstants.appVersion}",
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: const Color(0xFF2A2A3E),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  for (int i = 0; i < _changelogItems.length; i++) ...[
+                    _ChangelogRow(text: _changelogItems[i]),
+                    if (i < _changelogItems.length - 1)
+                      const SizedBox(height: 10),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -749,11 +929,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  void _showBugReport() {
+  void _showBugReport() async {
     final bugCtrl = TextEditingController();
     bool submitting = false;
 
-    showModalBottomSheet(
+    try {
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -857,6 +1038,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+    } finally {
+      bugCtrl.dispose();
+    }
   }
 
   // ── Contact Support ─────────────────────────────────────
@@ -864,23 +1048,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void _showContactSupport() {
     const supportEmail = 'support@wayture.com';
 
-    showDialog(
+    showModalBottomSheet(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: const Color(0xFF1A1A2E),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-        title: const Row(
-          children: [
-            Icon(Icons.email_outlined, color: AppColors.primary),
-            SizedBox(width: 10),
-            Text('Contact Support',
-                style: TextStyle(color: Colors.white, fontSize: 18)),
-          ],
+      backgroundColor: Colors.transparent,
+      builder: (_) => Container(
+        decoration: BoxDecoration(
+          color: Colors.black.withAlpha(217),
+          borderRadius:
+              const BorderRadius.vertical(top: Radius.circular(20)),
         ),
-        content: Column(
+        padding: const EdgeInsets.all(24),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Container(
+              width: 40, height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: Colors.white38,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.email_outlined, color: AppColors.primary),
+                SizedBox(width: 10),
+                Text('Contact Support',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    )),
+              ],
+            ),
+            const SizedBox(height: 16),
             const Text(
               'Reach the Wayture team at:',
               style: TextStyle(color: Colors.white70, fontSize: 13),
@@ -906,39 +1108,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Average reply time: 24 hours',
               style: TextStyle(color: Colors.white38, fontSize: 11),
             ),
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              height: 44,
+              child: ElevatedButton.icon(
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
+                  elevation: 0,
+                ),
+                onPressed: () async {
+                  await Clipboard.setData(
+                      const ClipboardData(text: supportEmail));
+                  if (!mounted) return;
+                  Navigator.pop(context);
+                  _showSnackBar('Email copied to clipboard');
+                },
+                icon: const Icon(Icons.copy, size: 16),
+                label: const Text('Copy Email'),
+              ),
+            ),
+            const SizedBox(height: 10),
           ],
         ),
-        actions: [
-          TextButton.icon(
-            icon: const Icon(Icons.copy, size: 16, color: AppColors.primary),
-            label: const Text('Copy',
-                style: TextStyle(color: AppColors.primary)),
-            onPressed: () async {
-              await Clipboard.setData(
-                  const ClipboardData(text: supportEmail));
-              if (!ctx.mounted) return;
-              Navigator.pop(ctx);
-              _showSnackBar('Email copied to clipboard');
-            },
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child:
-                const Text('Close', style: TextStyle(color: Colors.white60)),
-          ),
-        ],
       ),
     );
   }
 
   // ── Rate the App ────────────────────────────────────────
 
-  void _showRatingSheet() {
+  void _showRatingSheet() async {
     int stars = _currentRating;
     final feedbackCtrl = TextEditingController(text: _currentFeedback);
     bool submitting = false;
 
-    showModalBottomSheet(
+    try {
+    await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
@@ -1050,15 +1258,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? null
                         : () async {
                             sheetSetState(() => submitting = true);
-                            final ok = await _submitRating(
+                            final error = await _submitRating(
                               stars: stars,
                               feedback: feedbackCtrl.text.trim(),
                             );
                             if (!ctx.mounted) return;
                             Navigator.pop(ctx);
-                            _showSnackBar(ok
-                                ? 'Thanks for rating Wayture $stars★!'
-                                : 'Could not save rating — check console for details');
+                            _showSnackBar(error ??
+                                'Thanks for rating Wayture $stars★!');
                           },
                     child: submitting
                         ? const SizedBox(
@@ -1090,6 +1297,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+    } finally {
+      feedbackCtrl.dispose();
+    }
   }
 
   String _labelForStars(int stars) {
@@ -1111,55 +1321,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Write the rating into the existing settings/{uid} doc.
-  ///
-  /// We reuse the settings doc (instead of a separate appRatings collection)
-  /// because the settings collection already has security rules deployed —
-  /// `allow read, write: if request.auth.uid == userId` — so the write
-  /// works immediately without touching firestore.rules.
-  Future<bool> _submitRating({
+  /// Persist the rating to Firestore + backend.
+  /// Returns null on success, or an error message on failure.
+  Future<String?> _submitRating({
     required int stars,
     required String feedback,
   }) async {
     final uid = _uid;
     if (uid == null) {
-      // Keep UI responsive even if unsigned. Cache locally and treat
-      // as success so the demo never shows a broken rating flow.
-      setState(() {
-        _currentRating = stars;
-        _currentFeedback = feedback;
-      });
-      debugPrint('rating: no signed-in user, cached locally only');
-      return true;
+      if (mounted) {
+        setState(() {
+          _currentRating = stars;
+          _currentFeedback = feedback;
+        });
+      }
+      return null; // cached locally, not an error
     }
 
     try {
       final now = FieldValue.serverTimestamp();
+
+      // 1. Write to appRatings/{uid} (main ratings collection)
       await FirebaseFirestore.instance
-          .collection('settings')
+          .collection('appRatings')
+          .doc(uid)
+          .set({
+        'uid': uid,
+        'stars': stars,
+        'feedback': feedback,
+        'app_version': AppConstants.appVersion,
+        'updated_at': now,
+        if (_currentRating == 0) 'created_at': now,
+      }, SetOptions(merge: true));
+
+      // 2. Write to settings/{uid} (backup for settings screen)
+      await FirebaseFirestore.instance
+          .collection('Settings')
           .doc(uid)
           .set({
         'rating': stars,
         'ratingFeedback': feedback,
-        'ratingAppVersion': AppConstants.appVersion,
-        'ratingUpdatedAt': now,
-        // Only stamp createdAt on the user's first-ever rating.
-        if (_currentRating == 0) 'ratingCreatedAt': now,
         'updatedAt': now,
       }, SetOptions(merge: true));
 
+      // 3. Backend API (best-effort, don't block on failure)
+      ApiService.submitRating(stars: stars, feedback: feedback).catchError((e) {
+        debugPrint('rating backend submit error: $e');
+        return false;
+      });
+
+      if (!mounted) return null;
       setState(() {
         _currentRating = stars;
         _currentFeedback = feedback;
       });
-      return true;
+
+      _loadRatingSummary();
+      return null; // success
     } on FirebaseException catch (e) {
-      debugPrint('rating save FirebaseException: '
-          'code=${e.code} message=${e.message}');
-      return false;
-    } catch (e, st) {
-      debugPrint('rating save error: $e\n$st');
-      return false;
+      debugPrint('rating FirebaseException: code=${e.code} message=${e.message}');
+      return 'Firestore error: ${e.message ?? e.code}';
+    } catch (e) {
+      debugPrint('rating error: $e');
+      return 'Error: $e';
     }
   }
 
@@ -1265,11 +1489,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 style: const TextStyle(
                                     color: Colors.white60, fontSize: 13),
                               ),
+                              const SizedBox(height: 4),
+                              Row(
+                                children: [
+                                  const Icon(Icons.bookmark,
+                                      color: AppColors.primary, size: 14),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    '$_savedRoutesCount saved route${_savedRoutesCount == 1 ? '' : 's'}',
+                                    style: const TextStyle(
+                                      color: Colors.white54,
+                                      fontSize: 12,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ],
                           ),
                         ),
                         GestureDetector(
-                          onTap: () => _showEditProfileSheet(auth),
+                          onTap: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                builder: (_) => const ProfileScreen()),
+                          ),
                           child: const Text(
                             'Edit Profile',
                             style: TextStyle(
@@ -1386,12 +1629,146 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           'Notifications',
                           _notificationsEnabled,
                           (v) async {
-                            setState(() => _notificationsEnabled = v);
+                            if (mounted) setState(() => _notificationsEnabled = v);
                             await _saveSetting('notificationsEnabled', v);
                             _showSnackBar(
                                 'Notifications ${v ? "enabled" : "disabled"}');
                           },
                         ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // ── Rating Card (visible on settings main screen) ──
+                  _glassCard(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'App Rating',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 15,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (_ratingsLoaded && _totalRatings > 0)
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: Colors.amber.withAlpha(30),
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: Text(
+                                  '$_totalRatings review${_totalRatings == 1 ? '' : 's'}',
+                                  style: TextStyle(
+                                    color: Colors.amber.shade300,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+
+                        // Average rating row
+                        if (_ratingsLoaded && _totalRatings > 0) ...[
+                          Row(
+                            children: [
+                              Text(
+                                _averageRating.toStringAsFixed(1),
+                                style: const TextStyle(
+                                  color: Colors.amber,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              // Star row for average
+                              Row(
+                                children: List.generate(5, (i) {
+                                  final starVal = i + 1;
+                                  if (starVal <= _averageRating.floor()) {
+                                    return const Icon(Icons.star,
+                                        color: Colors.amber, size: 20);
+                                  } else if (starVal - _averageRating < 1) {
+                                    return const Icon(Icons.star_half,
+                                        color: Colors.amber, size: 20);
+                                  } else {
+                                    return const Icon(Icons.star_border,
+                                        color: Colors.white24, size: 20);
+                                  }
+                                }),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                'avg',
+                                style: TextStyle(
+                                    color: Colors.white38, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+
+                        // User's own rating
+                        Row(
+                          children: [
+                            const Text('Your rating: ',
+                                style: TextStyle(
+                                    color: Colors.white60, fontSize: 13)),
+                            if (_currentRating > 0)
+                              Row(
+                                children: List.generate(
+                                  5,
+                                  (i) => Icon(
+                                    i < _currentRating
+                                        ? Icons.star
+                                        : Icons.star_border,
+                                    color: i < _currentRating
+                                        ? Colors.amber
+                                        : Colors.white24,
+                                    size: 18,
+                                  ),
+                                ),
+                              )
+                            else
+                              const Text('Not rated yet',
+                                  style: TextStyle(
+                                      color: Colors.white38, fontSize: 13)),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: _showRatingSheet,
+                              child: Text(
+                                _currentRating > 0
+                                    ? 'Update'
+                                    : 'Rate Now',
+                                style: const TextStyle(
+                                    color: AppColors.primary, fontSize: 13),
+                              ),
+                            ),
+                          ],
+                        ),
+
+                        if (_currentRating > 0 &&
+                            _currentFeedback.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '"$_currentFeedback"',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: Colors.white38,
+                              fontSize: 12,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ),
@@ -1417,6 +1794,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         _settingsRow(
                             'About Wayture', '', _showAboutWayture),
                         const Divider(color: Colors.white12, height: 20),
+                        _iconSettingsRow(
+                          icon: Icons.privacy_tip_outlined,
+                          label: 'Privacy Policy',
+                          onTap: _showPrivacyPolicy,
+                        ),
+                        const Divider(color: Colors.white12, height: 20),
+                        _iconSettingsRow(
+                          icon: Icons.new_releases_outlined,
+                          label: "What's New",
+                          onTap: _showWhatsNew,
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF00897B),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              'v${AppConstants.appVersion}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const Divider(color: Colors.white12, height: 20),
                         _settingsRow(
                             'Help & Support', '', _showHelpSupport),
                       ],
@@ -1438,44 +1843,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           elevation: 0,
                         ),
                         onPressed: () {
-                          showDialog(
-                            context: context,
-                            builder: (ctx) => AlertDialog(
+                          ScaffoldMessenger.of(context)
+                            ..clearSnackBars()
+                            ..showSnackBar(SnackBar(
+                              content: const Row(children: [
+                                Icon(Icons.logout_rounded,
+                                    color: Colors.white, size: 20),
+                                SizedBox(width: 10),
+                                Text('Log out of Wayture?',
+                                    style: TextStyle(color: Colors.white)),
+                              ]),
                               backgroundColor: const Color(0xFF1A1A2E),
+                              behavior: SnackBarBehavior.floating,
                               shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(16)),
-                              title: const Text('Log Out',
-                                  style: TextStyle(color: Colors.white)),
-                              content: const Text(
-                                'Are you sure you want to log out?',
-                                style: TextStyle(color: Colors.white70),
+                                  borderRadius: BorderRadius.circular(12)),
+                              duration: const Duration(seconds: 4),
+                              action: SnackBarAction(
+                                label: 'LOG OUT',
+                                textColor: Colors.redAccent,
+                                onPressed: () async {
+                                  final rootNav = Navigator.of(
+                                      context, rootNavigator: true);
+                                  await auth.signOut();
+                                  rootNav.pushAndRemoveUntil(
+                                    MaterialPageRoute(
+                                        builder: (_) =>
+                                            const LoginScreen()),
+                                    (route) => false,
+                                  );
+                                },
                               ),
-                              actions: [
-                                TextButton(
-                                  onPressed: () => Navigator.pop(ctx),
-                                  child: const Text('Cancel'),
-                                ),
-                                TextButton(
-                                  onPressed: () async {
-                                    final navigator =
-                                        Navigator.of(context);
-                                    Navigator.pop(ctx);
-                                    await auth.signOut();
-                                    if (mounted) {
-                                      navigator.pushAndRemoveUntil(
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                const LoginScreen()),
-                                        (route) => false,
-                                      );
-                                    }
-                                  },
-                                  child: const Text('Log Out',
-                                      style: TextStyle(color: Colors.red)),
-                                ),
-                              ],
-                            ),
-                          );
+                            ));
                         },
                         child: const Text(
                           'Log Out',
@@ -1559,6 +1957,108 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _iconSettingsRow({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    Widget? trailing,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.white70, size: 18),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(color: Colors.white, fontSize: 14),
+            ),
+          ),
+          if (trailing != null) ...[
+            trailing,
+            const SizedBox(width: 4),
+          ],
+          const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
+        ],
+      ),
+    );
+  }
+}
+
+class _PoweredByChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _PoweredByChip({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      avatar: Icon(icon, size: 14, color: Colors.white70),
+      label: Text(label),
+      labelStyle: const TextStyle(color: Colors.white70, fontSize: 11),
+      backgroundColor: Colors.white.withAlpha(20),
+      side: const BorderSide(color: Colors.white24),
+      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      visualDensity: VisualDensity.compact,
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final IconData icon;
+  final String text;
+
+  const _InfoRow({required this.icon, required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFF00897B), size: 18),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ChangelogRow extends StatelessWidget {
+  final String text;
+
+  const _ChangelogRow({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Padding(
+          padding: EdgeInsets.only(top: 5),
+          child: Icon(
+            Icons.fiber_manual_record,
+            size: 8,
+            color: Color(0xFF00897B),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(color: Colors.white70, fontSize: 13),
+          ),
+        ),
+      ],
     );
   }
 }

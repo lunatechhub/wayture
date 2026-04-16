@@ -19,7 +19,9 @@ class _CongestionBreakdownCardState extends State<CongestionBreakdownCard> {
     final total = widget.breakdown.totalScore;
 
     return GestureDetector(
-      onTap: () => setState(() => _expanded = !_expanded),
+      onTap: () {
+        if (mounted) setState(() => _expanded = !_expanded);
+      },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),
         curve: Curves.easeInOut,

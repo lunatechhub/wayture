@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 
 /// Auth service — wraps Firebase Auth with demo fallback.
 class AuthService extends ChangeNotifier {
@@ -54,6 +55,37 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  Future<String?> signInWithGoogle() async {
+    try {
+      final googleSignIn = GoogleSignIn(
+        scopes: ['email', 'profile'],
+      );
+
+      // Sign out first so the account chooser always appears,
+      // letting the user pick which Google account to use.
+      await googleSignIn.signOut();
+
+      final googleUser = await googleSignIn.signIn();
+      if (googleUser == null) return 'Sign-in cancelled';
+
+      final googleAuth = await googleUser.authentication;
+      final credential = GoogleAuthProvider.credential(
+        accessToken: googleAuth.accessToken,
+        idToken: googleAuth.idToken,
+      );
+
+      await _auth.signInWithCredential(credential);
+      notifyListeners();
+      return null;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('Google sign-in FirebaseAuthException: ${e.code} ${e.message}');
+      return _mapError(e.code);
+    } catch (e) {
+      debugPrint('Google sign-in error: $e');
+      return 'Google sign-in failed: $e';
+    }
+  }
+
   Future<String?> resetPassword(String email) async {
     try {
       await _auth.sendPasswordResetEmail(email: email);
@@ -66,6 +98,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
+    try { await GoogleSignIn().signOut(); } catch (_) {}
     try { await _auth.signOut(); } catch (_) {}
     _useDemoMode = false;
     _demoName = '';

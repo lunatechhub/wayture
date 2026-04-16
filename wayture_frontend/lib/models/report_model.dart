@@ -60,6 +60,7 @@ class ReportModel {
   final DateTime timestamp;
   final double latitude;
   final double longitude;
+  final int upvotes;
 
   ReportModel({
     required this.id,
@@ -70,6 +71,7 @@ class ReportModel {
     required this.timestamp,
     required this.latitude,
     required this.longitude,
+    this.upvotes = 0,
   });
 
   String get timeAgo {

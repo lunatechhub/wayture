@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:wayture/models/congestion_factor.dart';
 import 'package:wayture/models/kathmandu_event.dart';
@@ -13,6 +15,8 @@ import 'package:wayture/services/mock_data.dart';
 class RouteService extends ChangeNotifier {
   final _random = Random();
   Timer? _alertTimer;
+  final List<Timer> _autoExpireTimers = [];
+  bool _disposed = false;
 
   List<RouteModel> _currentRoutes = [];
   List<RouteModel> get currentRoutes => _currentRoutes;
@@ -510,13 +514,15 @@ class RouteService extends ChangeNotifier {
     _activeAlerts.add(alert);
     notifyListeners();
 
-    Timer(const Duration(seconds: 30), () {
+    final expireTimer = Timer(const Duration(seconds: 30), () {
+      if (_disposed) return;
       final idx = _activeAlerts.indexWhere((a) => a.id == alert.id);
       if (idx != -1) {
         _activeAlerts[idx] = _activeAlerts[idx].copyWith(isActive: false);
         notifyListeners();
       }
     });
+    _autoExpireTimers.add(expireTimer);
   }
 
   void dismissAlert(String alertId) {
@@ -543,7 +549,25 @@ class RouteService extends ChangeNotifier {
     if (_routeHistory.length > 20) {
       _routeHistory.removeRange(20, _routeHistory.length);
     }
+    _saveToFirestore(from, to, routeName);
     notifyListeners();
+  }
+
+  Future<void> _saveToFirestore(
+      String from, String to, String routeName) async {
+    final uid = FirebaseAuth.instance.currentUser?.uid;
+    if (uid == null) return;
+    try {
+      await FirebaseFirestore.instance.collection('Routes').add({
+        'uid': uid,
+        'from': from,
+        'to': to,
+        'route_name': routeName,
+        'created_at': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+      debugPrint('route history save error: $e');
+    }
   }
 
   void toggleFavorite(int index) {
@@ -555,7 +579,12 @@ class RouteService extends ChangeNotifier {
 
   @override
   void dispose() {
+    _disposed = true;
     _alertTimer?.cancel();
+    for (final t in _autoExpireTimers) {
+      t.cancel();
+    }
+    _autoExpireTimers.clear();
     super.dispose();
   }
 }

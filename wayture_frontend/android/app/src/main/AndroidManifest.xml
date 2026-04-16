@@ -3,8 +3,11 @@
     <!-- Location permissions for GPS -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- Notifications (Android 13+) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="Wayture"
@@ -13,14 +16,10 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:usesCleartextTraffic="true">
 
-        <!-- Google Maps API key.
-             BEFORE BUILDING: replace GOOGLE_MAPS_API_KEY_HERE with your real key
-             from https://console.cloud.google.com → APIs & Services → Credentials.
-             Make sure "Maps SDK for Android" is enabled and the key is restricted
-             to package com.example.wayture + your debug/release SHA-1 fingerprint. -->
+        <!-- Google Maps API key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="GOOGLE_MAPS_API_KEY_HERE" />
+            android:value="AIzaSyAOVYRIgupAurZup5y1PRh8Ismb1A3lLao" />
 
         <activity
             android:name=".MainActivity"

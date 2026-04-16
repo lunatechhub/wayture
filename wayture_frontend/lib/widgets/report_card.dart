@@ -1,12 +1,47 @@
 import 'dart:ui';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:wayture/models/report_model.dart';
 
 /// Glassmorphism-style report card for the reports screen.
-class ReportCard extends StatelessWidget {
+class ReportCard extends StatefulWidget {
   final ReportModel report;
 
   const ReportCard({super.key, required this.report});
+
+  @override
+  State<ReportCard> createState() => _ReportCardState();
+}
+
+class _ReportCardState extends State<ReportCard> {
+  late int _upvotes;
+  bool _upvoted = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _upvotes = widget.report.upvotes;
+  }
+
+  Future<void> _toggleUpvote() async {
+    setState(() {
+      if (_upvoted) {
+        _upvoted = false;
+        _upvotes -= 1;
+      } else {
+        _upvoted = true;
+        _upvotes += 1;
+      }
+    });
+    try {
+      await FirebaseFirestore.instance
+          .collection('CommunityReports')
+          .doc(widget.report.id)
+          .update({'upvotes': _upvotes});
+    } catch (e) {
+      debugPrint('upvote update error: $e');
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,11 +65,12 @@ class ReportCard extends StatelessWidget {
                 Container(
                   width: 44, height: 44,
                   decoration: BoxDecoration(
-                    color: report.type.color.withAlpha(50),
+                    color: widget.report.type.color.withAlpha(50),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Center(
-                    child: Text(report.type.emoji, style: const TextStyle(fontSize: 20)),
+                    child: Text(widget.report.type.emoji,
+                        style: const TextStyle(fontSize: 20)),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -47,7 +83,7 @@ class ReportCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              report.location,
+                              widget.report.location,
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 14,
@@ -56,26 +92,76 @@ class ReportCard extends StatelessWidget {
                             ),
                           ),
                           Text(
-                            report.timeAgo,
-                            style: const TextStyle(color: Colors.white60, fontSize: 11),
+                            widget.report.timeAgo,
+                            style: const TextStyle(
+                                color: Colors.white60, fontSize: 11),
                           ),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        report.type.label,
+                        widget.report.type.label,
                         style: TextStyle(
-                          color: report.type.color,
+                          color: widget.report.type.color,
                           fontSize: 12,
                           fontWeight: FontWeight.w500,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        report.description,
-                        style: const TextStyle(color: Colors.white70, fontSize: 12),
+                        widget.report.description,
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Spacer(),
+                          GestureDetector(
+                            onTap: _toggleUpvote,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 6),
+                              decoration: BoxDecoration(
+                                color: _upvoted
+                                    ? const Color(0xFF00897B)
+                                    : Colors.white.withAlpha(25),
+                                borderRadius: BorderRadius.circular(20),
+                                border: Border.all(
+                                  color: _upvoted
+                                      ? const Color(0xFF00897B)
+                                      : Colors.white.withAlpha(60),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.thumb_up,
+                                    size: 14,
+                                    color: _upvoted
+                                        ? Colors.white
+                                        : Colors.white70,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    '$_upvotes',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                      color: _upvoted
+                                          ? Colors.white
+                                          : Colors.white70,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),

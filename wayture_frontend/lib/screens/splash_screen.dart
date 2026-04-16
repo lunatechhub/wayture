@@ -1,10 +1,22 @@
 import 'package:flutter/material.dart';
 import 'package:wayture/config/constants.dart';
-import 'package:wayture/screens/login_screen.dart';
+import 'package:wayture/core/app_routes.dart';
+import 'package:wayture/screens/permission_request_screen.dart';
 
 /// Splash / Welcome screen — full background image with "Get Started" button.
+/// On first launch, navigates to the permission screen.
+/// On subsequent launches, goes straight to login.
 class SplashScreen extends StatelessWidget {
   const SplashScreen({super.key});
+
+  Future<void> _onGetStarted(BuildContext context) async {
+    final seen = await hasSeenPermissions();
+    if (!context.mounted) return;
+    Navigator.pushReplacementNamed(
+      context,
+      seen ? AppRoutes.login : AppRoutes.permissions,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -63,12 +75,7 @@ class SplashScreen extends StatelessWidget {
                           borderRadius: BorderRadius.circular(14),
                         ),
                       ),
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (_) => const LoginScreen()),
-                        );
-                      },
+                      onPressed: () => _onGetStarted(context),
                       child: const Text(
                         'Get Started',
                         style: TextStyle(

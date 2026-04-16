@@ -32,7 +32,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   Future<void> _sendResetLink() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    if (mounted) setState(() => _isLoading = true);
 
     final auth = context.read<AuthService>();
     final error = await auth.resetPassword(_emailController.text.trim());
@@ -252,7 +252,9 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         ),
         const SizedBox(height: 12),
         TextButton(
-          onPressed: () => setState(() => _emailSent = false),
+          onPressed: () {
+            if (mounted) setState(() => _emailSent = false);
+          },
           child: const Text(
             "Didn't receive it? Try again",
             style: TextStyle(color: Colors.white70),

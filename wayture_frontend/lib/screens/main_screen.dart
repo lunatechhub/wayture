@@ -1,14 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:wayture/config/theme.dart';
-import 'package:wayture/services/theme_service.dart';
+
 import 'package:wayture/screens/home_screen.dart';
 import 'package:wayture/screens/reports_screen.dart';
-import 'package:wayture/screens/notifications_screen.dart';
+import 'package:wayture/screens/saved_routes_screen.dart';
 import 'package:wayture/screens/settings_screen.dart';
+import 'package:wayture/services/connection_manager.dart';
+
+// ── Dark theme constants matching the app's existing dark style ──
+const Color _navBg = Color(0xFF1A1A2E);
+const Color _navSelected = Color(0xFF00897B); // teal accent
+const Color _navUnselected = Color(0xFF6B6B7B);
+const Color _navBorder = Color(0xFF2A2A3E);
 
 /// Main wrapper screen with bottom navigation bar.
-/// Holds the 4 tabs: Home, Reports, Notifications, Settings.
+/// Holds the 4 tabs: Home, Search, Saved, Profile.
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
@@ -18,82 +24,132 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  bool _hasShownOfflineDialog = false;
 
   final _screens = const [
     HomeScreen(),
     ReportsScreen(),
-    NotificationsScreen(),
+    SavedRoutesScreen(),
     SettingsScreen(),
   ];
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: context.watch<ThemeService>().isDarkMode
-              ? const Color(0xFF0D0D1A)
-              : const Color(0xFF1A1A2E),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withAlpha(60),
-              blurRadius: 10,
-              offset: const Offset(0, -2),
-            ),
-          ],
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _navItem(0, Icons.map_outlined, Icons.map, 'Home'),
-                _navItem(1, Icons.warning_amber_outlined, Icons.warning_amber, 'Reports'),
-                _navItem(2, Icons.notifications_outlined, Icons.notifications, 'Alerts'),
-                _navItem(3, Icons.settings_outlined, Icons.settings, 'Settings'),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
+  Future<bool> _handleBack() async {
+    if (_currentIndex != 0) {
+      if (mounted) setState(() => _currentIndex = 0);
+      return false;
+    }
+    return true;
   }
 
-  Widget _navItem(int index, IconData outlinedIcon, IconData filledIcon, String label) {
-    final isSelected = _currentIndex == index;
-    return GestureDetector(
-      onTap: () => setState(() => _currentIndex = index),
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected ? AppColors.primary.withAlpha(40) : Colors.transparent,
-          borderRadius: BorderRadius.circular(14),
+  // ── No-Internet Dialog Listener ──
+  void _onConnectivityChanged() {
+    if (!mounted) return;
+    final connMgr = context.read<ConnectionManager>();
+    if (!connMgr.isOnline && connMgr.hasChecked && !_hasShownOfflineDialog) {
+      _hasShownOfflineDialog = true;
+      ScaffoldMessenger.of(context)
+        ..clearSnackBars()
+        ..showSnackBar(SnackBar(
+          content: const Row(children: [
+            Icon(Icons.wifi_off_rounded, color: Colors.white, size: 20),
+            SizedBox(width: 10),
+            Expanded(
+              child: Text('No connection — check your internet',
+                  style: TextStyle(color: Colors.white)),
+            ),
+          ]),
+          backgroundColor: const Color(0xFFFB8C00),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12)),
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'RETRY',
+            textColor: Colors.white,
+            onPressed: () async {
+              await connMgr.checkNow();
+              if (connMgr.isOnline) {
+                _hasShownOfflineDialog = false;
+              }
+            },
+          ),
+        ));
+    } else if (connMgr.isOnline) {
+      _hasShownOfflineDialog = false;
+    }
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final connMgr = context.watch<ConnectionManager>();
+    if (connMgr.hasChecked && !connMgr.isOnline && !_hasShownOfflineDialog) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _onConnectivityChanged();
+      });
+    } else if (connMgr.isOnline) {
+      _hasShownOfflineDialog = false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) {
+          _handleBack();
+        }
+      },
+      child: Scaffold(
+        backgroundColor: _navBg,
+        body: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              isSelected ? filledIcon : outlinedIcon,
-              color: isSelected ? AppColors.primary : Colors.white54,
-              size: 24,
+        bottomNavigationBar: Container(
+          decoration: const BoxDecoration(
+            color: _navBg,
+            border: Border(
+              top: BorderSide(color: _navBorder, width: 1),
             ),
-            const SizedBox(height: 2),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-                color: isSelected ? AppColors.primary : Colors.white54,
+          ),
+          child: BottomNavigationBar(
+            currentIndex: _currentIndex,
+            onTap: (i) {
+              if (i == _currentIndex) return;
+              if (mounted) setState(() => _currentIndex = i);
+            },
+            backgroundColor: _navBg,
+            selectedItemColor: _navSelected,
+            unselectedItemColor: _navUnselected,
+            type: BottomNavigationBarType.fixed,
+            elevation: 0,
+            selectedFontSize: 12,
+            unselectedFontSize: 11,
+            items: const [
+              BottomNavigationBarItem(
+                icon: Icon(Icons.map_outlined),
+                activeIcon: Icon(Icons.map),
+                label: 'Home',
               ),
-            ),
-          ],
+              BottomNavigationBarItem(
+                icon: Icon(Icons.search_outlined),
+                activeIcon: Icon(Icons.search),
+                label: 'Search',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.bookmark_outline),
+                activeIcon: Icon(Icons.bookmark),
+                label: 'Saved',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.person_outline),
+                activeIcon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+          ),
         ),
       ),
     );

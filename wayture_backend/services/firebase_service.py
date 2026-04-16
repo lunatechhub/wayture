@@ -64,10 +64,12 @@ class FirebaseService:
     # --- Health Check ---
 
     async def health_check(self):
-        """Verify Firestore is reachable by writing a ping document."""
+        """Verify Firestore is reachable with a lightweight read (no junk data)."""
         try:
-            doc_ref = self.db.collection("_health").document("ping")
-            await doc_ref.set({"ts": datetime.now(timezone.utc)})
+            # Read-only check: list up to 1 doc from any collection
+            docs = self.db.collection("settings").limit(1).stream()
+            async for _ in docs:
+                pass
             return True
         except Exception as e:
             error_msg = str(e)
@@ -83,28 +85,28 @@ class FirebaseService:
     # --- Users ---
 
     async def create_user(self, uid: str, data: dict) -> dict:
-        doc_ref = self.db.collection("Users").document(uid)
+        doc_ref = self.db.collection("users").document(uid)
         data["created_at"] = datetime.now(timezone.utc)
         await doc_ref.set(data)
         return {**data, "uid": uid}
 
     async def get_user(self, uid: str) -> dict | None:
-        doc = await self.db.collection("Users").document(uid).get()
+        doc = await self.db.collection("users").document(uid).get()
         return doc.to_dict() if doc.exists else None
 
     async def update_user(self, uid: str, data: dict):
-        await self.db.collection("Users").document(uid).update(data)
+        await self.db.collection("users").document(uid).update(data)
 
     # --- Location ---
 
     async def update_location(self, uid: str, data: dict):
-        doc_ref = self.db.collection("Location").document(uid)
+        doc_ref = self.db.collection("locations").document(uid)
         data["updated_at"] = datetime.now(timezone.utc)
         await doc_ref.set(data, merge=True)
 
     async def get_nearby_locations(self, lat: float, lng: float, radius_km: float) -> list[dict]:
         """Get all locations and filter by haversine distance."""
-        docs = self.db.collection("Location").stream()
+        docs = self.db.collection("locations").stream()
         results = []
         async for doc in docs:
             d = doc.to_dict()
@@ -121,11 +123,11 @@ class FirebaseService:
         data["uid"] = uid
         data["created_at"] = datetime.now(timezone.utc)
         data["upvotes"] = 0
-        _, doc_ref = await self.db.collection("CommunityReports").add(data)
+        _, doc_ref = await self.db.collection("communityReports").add(data)
         return doc_ref.id
 
     async def get_nearby_reports(self, lat: float, lng: float, radius_km: float) -> list[dict]:
-        docs = self.db.collection("CommunityReports").stream()
+        docs = self.db.collection("communityReports").stream()
         results = []
         async for doc in docs:
             d = doc.to_dict()
@@ -141,11 +143,11 @@ class FirebaseService:
     async def save_route(self, uid: str, data: dict) -> str:
         data["uid"] = uid
         data["created_at"] = datetime.now(timezone.utc)
-        _, doc_ref = await self.db.collection("Routes").add(data)
+        _, doc_ref = await self.db.collection("routes").add(data)
         return doc_ref.id
 
     async def get_user_routes(self, uid: str) -> list[dict]:
-        docs = self.db.collection("Routes").where("uid", "==", uid).stream()
+        docs = self.db.collection("routes").where("uid", "==", uid).stream()
         return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
 
     # --- Notifications ---
@@ -158,12 +160,12 @@ class FirebaseService:
             "read": False,
             "created_at": datetime.now(timezone.utc),
         }
-        _, doc_ref = await self.db.collection("Notifications").add(data)
+        _, doc_ref = await self.db.collection("notifications").add(data)
         return doc_ref.id
 
     async def get_unread_notifications(self, uid: str) -> list[dict]:
         docs = (
-            self.db.collection("Notifications")
+            self.db.collection("notifications")
             .where("uid", "==", uid)
             .where("read", "==", False)
             .order_by("created_at")
@@ -174,18 +176,188 @@ class FirebaseService:
     async def mark_notifications_read(self, notification_ids: list[str]):
         batch = self.db.batch()
         for nid in notification_ids:
-            ref = self.db.collection("Notifications").document(nid)
+            ref = self.db.collection("notifications").document(nid)
             batch.update(ref, {"read": True})
         await batch.commit()
+
+    # --- Traffic Data ---
+
+    async def store_traffic_data(self, data: dict) -> str:
+        """Store a single traffic data record in Firestore."""
+        data["timestamp"] = datetime.now(timezone.utc)
+        _, doc_ref = await self.db.collection("traffic_data").add(data)
+        return doc_ref.id
+
+    async def store_traffic_batch(self, records: list[dict]) -> int:
+        """Store multiple traffic records in a single batch write."""
+        batch = self.db.batch()
+        count = 0
+        for rec in records:
+            rec["timestamp"] = datetime.now(timezone.utc)
+            doc_ref = self.db.collection("traffic_data").document()
+            batch.set(doc_ref, rec)
+            count += 1
+            # Firestore batch limit is 500 per commit
+            if count % 450 == 0:
+                await batch.commit()
+                batch = self.db.batch()
+        if count % 450 != 0:
+            await batch.commit()
+        return count
+
+    async def get_all_traffic_data(self, limit: int = 500) -> list[dict]:
+        """Fetch all traffic data, ordered by created_at descending."""
+        query = (
+            self.db.collection("traffic_data")
+            .order_by("timestamp", direction="DESCENDING")
+            .limit(limit)
+        )
+        docs = query.stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    async def get_traffic_by_location(self, location: str) -> list[dict]:
+        """Fetch traffic data for a specific location name.
+
+        Traffic records are stored with `location_name` (see TrafficDataUpload),
+        so we must filter on that field — filtering on "location" always
+        returned zero docs and surfaced as a 404 to the Flutter client.
+        """
+        docs = (
+            self.db.collection("traffic_data")
+            .where("location_name", "==", location)
+            .order_by("timestamp", direction="DESCENDING")
+            .limit(100)
+            .stream()
+        )
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    async def store_realtime_update(self, data: dict) -> str:
+        """Store or update a real-time traffic observation.
+
+        Uses location name as document ID so each location has exactly
+        one real-time record that gets overwritten with the latest data.
+        """
+        location = data.get("location_name", "unknown")
+        doc_id = location.lower().replace(" ", "_")
+        data["updated_at"] = datetime.now(timezone.utc)
+        await self.db.collection("traffic_realtime").document(doc_id).set(data)
+        return doc_id
+
+    async def get_all_realtime_traffic(self) -> list[dict]:
+        """Fetch all real-time traffic snapshots."""
+        docs = self.db.collection("traffic_realtime").stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    async def get_all_traffic_for_ml(self) -> list[dict]:
+        """Fetch all historical traffic data for ML training (no limit)."""
+        docs = self.db.collection("traffic_data").stream()
+        results = []
+        async for doc in docs:
+            d = doc.to_dict()
+            # Normalise datetime fields to avoid serialisation issues
+            for key in ("created_at", "updated_at", "timestamp"):
+                if key in d and hasattr(d[key], "isoformat"):
+                    d[key] = d[key].isoformat()
+            results.append(d)
+        return results
 
     # --- Settings (Set collection) ---
 
     async def get_settings(self, uid: str) -> dict | None:
-        doc = await self.db.collection("Set").document(uid).get()
+        doc = await self.db.collection("Settings").document(uid).get()
         return doc.to_dict() if doc.exists else None
 
     async def update_settings(self, uid: str, data: dict):
-        await self.db.collection("Set").document(uid).set(data, merge=True)
+        await self.db.collection("Settings").document(uid).set(data, merge=True)
+
+    # --- App Ratings ---
+
+    async def store_rating(self, uid: str, data: dict) -> str:
+        """Store or update a user's app rating in the appRatings collection."""
+        data["uid"] = uid
+        data["updated_at"] = datetime.now(timezone.utc)
+        # Set created_at only on first write (check if doc exists)
+        existing = await self.db.collection("appRatings").document(uid).get()
+        if not existing.exists:
+            data["created_at"] = datetime.now(timezone.utc)
+        await self.db.collection("appRatings").document(uid).set(data, merge=True)
+        return uid
+
+    async def get_rating(self, uid: str) -> dict | None:
+        """Fetch a single user's rating."""
+        doc = await self.db.collection("appRatings").document(uid).get()
+        return {**doc.to_dict(), "id": doc.id} if doc.exists else None
+
+    async def get_all_ratings(self) -> list[dict]:
+        """Fetch all app ratings for summary/display."""
+        docs = self.db.collection("appRatings").stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    # --- Incidents ---
+
+    async def create_incident(self, data: dict) -> str:
+        data["timestamp"] = datetime.now(timezone.utc)
+        data["is_active"] = True
+        _, doc_ref = await self.db.collection("incidents").add(data)
+        return doc_ref.id
+
+    async def get_active_incidents(self) -> list[dict]:
+        docs = (
+            self.db.collection("incidents")
+            .where("is_active", "==", True)
+            .stream()
+        )
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    async def get_all_incidents(self) -> list[dict]:
+        docs = self.db.collection("incidents").stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    async def resolve_incident(self, incident_id: str):
+        await self.db.collection("incidents").document(incident_id).update({
+            "is_active": False,
+            "resolved_at": datetime.now(timezone.utc),
+        })
+
+    # --- Nepal Locations ---
+
+    async def add_nepal_location(self, data: dict) -> str:
+        doc_id = data.get("location_name", "unknown").lower().replace(" ", "_").replace(",", "")
+        data["created_at"] = datetime.now(timezone.utc)
+        await self.db.collection("nepal_locations").document(doc_id).set(data)
+        return doc_id
+
+    async def get_nepal_locations(self) -> list[dict]:
+        docs = self.db.collection("nepal_locations").stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    # --- Route Suggestions ---
+
+    async def add_route_suggestion(self, data: dict) -> str:
+        data["created_at"] = datetime.now(timezone.utc)
+        _, doc_ref = await self.db.collection("route_suggestions").add(data)
+        return doc_ref.id
+
+    async def get_route_suggestions(self) -> list[dict]:
+        docs = self.db.collection("route_suggestions").stream()
+        return [{**doc.to_dict(), "id": doc.id} async for doc in docs]
+
+    # --- Seed Data ---
+
+    async def clear_collection(self, collection_name: str):
+        """Delete all documents in a collection (for re-seeding)."""
+        docs = self.db.collection(collection_name).stream()
+        batch = self.db.batch()
+        count = 0
+        async for doc in docs:
+            batch.delete(doc.reference)
+            count += 1
+            if count % 450 == 0:
+                await batch.commit()
+                batch = self.db.batch()
+        if count % 450 != 0:
+            await batch.commit()
+        return count
 
     # --- Helpers ---
 

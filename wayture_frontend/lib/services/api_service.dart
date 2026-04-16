@@ -74,6 +74,7 @@ class ApiService {
         'user_lng': userLng,
         'dest_lat': destLat,
         'dest_lng': destLng,
+        // ignore: use_null_aware_elements
         if (userSpeed != null) 'user_speed': userSpeed,
       };
       final response = await http
@@ -273,6 +274,211 @@ class ApiService {
     }
   }
 
+  // ── Traffic Data (new endpoints) ──
+
+  /// Fetch all traffic data from Firestore via backend.
+  static Future<List<Map<String, dynamic>>?> getAllTraffic({int limit = 500}) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/traffic?limit=$limit'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+    } catch (e) {
+      debugPrint('getAllTraffic error: $e');
+    }
+    return null;
+  }
+
+  /// Fetch traffic data for a specific location.
+  static Future<List<Map<String, dynamic>>?> getTrafficByLocation(String location) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/traffic/${Uri.encodeComponent(location)}'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+    } catch (e) {
+      debugPrint('getTrafficByLocation error: $e');
+    }
+    return null;
+  }
+
+  /// Upload a single traffic observation.
+  static Future<bool> uploadTraffic(Map<String, dynamic> data) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/traffic'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(data),
+          )
+          .timeout(_timeout);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('uploadTraffic error: $e');
+    }
+    return false;
+  }
+
+  /// Send a real-time traffic update.
+  static Future<bool> sendRealtimeUpdate(Map<String, dynamic> data) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/realtime-update'),
+            headers: {'Content-Type': 'application/json'},
+            body: json.encode(data),
+          )
+          .timeout(_timeout);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('sendRealtimeUpdate error: $e');
+    }
+    return false;
+  }
+
+  /// Get Google Maps route with traffic info.
+  static Future<Map<String, dynamic>?> getGoogleRoute({
+    required String origin,
+    required String destination,
+  }) async {
+    try {
+      final response = await http
+          .get(Uri.parse(
+            '$_baseUrl/route?origin=${Uri.encodeComponent(origin)}'
+            '&destination=${Uri.encodeComponent(destination)}',
+          ))
+          .timeout(const Duration(seconds: 15));
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getGoogleRoute error: $e');
+    }
+    return null;
+  }
+
+  /// Get ML traffic prediction for a location.
+  static Future<Map<String, dynamic>?> getTrafficPrediction({
+    required String location,
+    double latitude = 27.7172,
+    double longitude = 85.3240,
+    int? hour,
+    String? dayOfWeek,
+  }) async {
+    try {
+      final params = <String, String>{
+        'location': location,
+        'latitude': latitude.toString(),
+        'longitude': longitude.toString(),
+      };
+      if (hour != null) params['hour'] = hour.toString();
+      if (dayOfWeek != null) params['day_of_week'] = dayOfWeek;
+
+      final uri = Uri.parse('$_baseUrl/predict').replace(queryParameters: params);
+      final response = await http.get(uri).timeout(_timeout);
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getTrafficPrediction error: $e');
+    }
+    return null;
+  }
+
+  /// Get real-time traffic snapshots for all locations.
+  static Future<List<Map<String, dynamic>>?> getRealtimeTraffic() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/realtime'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+    } catch (e) {
+      debugPrint('getRealtimeTraffic error: $e');
+    }
+    return null;
+  }
+
+  // ── Ratings ──
+
+  /// Submit or update the current user's app rating via backend.
+  static Future<bool> submitRating({
+    required int stars,
+    String feedback = '',
+  }) async {
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_baseUrl/ratings/submit'),
+            headers: await _buildHeaders(),
+            body: json.encode({
+              'stars': stars,
+              'feedback': feedback,
+            }),
+          )
+          .timeout(_timeout);
+      return response.statusCode == 200;
+    } catch (e) {
+      debugPrint('submitRating error: $e');
+    }
+    return false;
+  }
+
+  /// Fetch the current user's own rating.
+  static Future<Map<String, dynamic>?> getMyRating() async {
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$_baseUrl/ratings/my-rating'),
+            headers: await _buildHeaders(),
+          )
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        final body = response.body;
+        if (body == 'null' || body.isEmpty) return null;
+        return json.decode(body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getMyRating error: $e');
+    }
+    return null;
+  }
+
+  /// Fetch all ratings from all users.
+  static Future<List<Map<String, dynamic>>?> getAllRatings() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/ratings/all'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        return List<Map<String, dynamic>>.from(json.decode(response.body));
+      }
+    } catch (e) {
+      debugPrint('getAllRatings error: $e');
+    }
+    return null;
+  }
+
+  /// Fetch aggregated rating summary (average, distribution, count).
+  static Future<Map<String, dynamic>?> getRatingSummary() async {
+    try {
+      final response = await http
+          .get(Uri.parse('$_baseUrl/ratings/summary'))
+          .timeout(_timeout);
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+    } catch (e) {
+      debugPrint('getRatingSummary error: $e');
+    }
+    return null;
+  }
+
   // ── Events (local — no backend endpoint yet) ──
 
   static Future<List<Map<String, dynamic>>?> getEvents() async {
@@ -337,6 +543,7 @@ class ApiService {
       timestamp: DateTime.tryParse(r['created_at'] ?? '') ?? DateTime.now(),
       latitude: (r['latitude'] as num?)?.toDouble() ?? 27.7172,
       longitude: (r['longitude'] as num?)?.toDouble() ?? 85.3240,
+      upvotes: (r['upvotes'] as num?)?.toInt() ?? 0,
     );
   }
 

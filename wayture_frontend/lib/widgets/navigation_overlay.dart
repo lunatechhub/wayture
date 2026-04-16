@@ -256,7 +256,7 @@ class _NavigationOverlayState extends State<NavigationOverlay>
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: () {
-                                setState(() => _alertDismissed = true);
+                                if (mounted) setState(() => _alertDismissed = true);
                                 // Find the alternative route index
                                 widget.onSwitchRoute?.call(
                                     0, _suggestedRoute);
@@ -280,7 +280,7 @@ class _NavigationOverlayState extends State<NavigationOverlay>
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: () {
-                                setState(() => _alertDismissed = true);
+                                if (mounted) setState(() => _alertDismissed = true);
                               },
                               child: const Text(
                                 'Stay on Route',
