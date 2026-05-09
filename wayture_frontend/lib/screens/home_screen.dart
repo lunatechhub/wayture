@@ -20,6 +20,7 @@ import 'package:wayture/services/mock_data.dart';
 import 'package:wayture/services/connection_manager.dart';
 import 'package:wayture/services/route_service.dart';
 import 'package:wayture/services/theme_service.dart';
+import 'package:wayture/screens/find_routes_screen.dart';
 import 'package:wayture/widgets/custom_text_field.dart';
 import 'package:wayture/widgets/event_carousel.dart';
 import 'package:wayture/widgets/navigation_overlay.dart';
@@ -917,6 +918,22 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Find Routes — opens the standalone Find Routes demo
+                  // screen that shows 3 colored OSRM routes for any pair
+                  // of place names (e.g. Koteshwor → Thamel).
+                  FloatingActionButton.small(
+                    heroTag: 'find_routes_fab',
+                    onPressed: () {
+                      Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => const FindRoutesScreen(),
+                      ));
+                    },
+                    backgroundColor: Colors.indigo,
+                    tooltip: 'Find routes between two places',
+                    child: const Icon(Icons.alt_route,
+                        size: 20, color: Colors.white),
+                  ),
+                  const SizedBox(height: 10),
                   FloatingActionButton.small(
                     heroTag: 'report_fab',
                     onPressed: _openReportSheet,
@@ -1424,7 +1441,9 @@ class _HomeScreenState extends State<HomeScreen> {
                                 permission !=
                                     LocationPermission.deniedForever) {
                               final pos = await Geolocator.getCurrentPosition(
-                                desiredAccuracy: LocationAccuracy.high,
+                                locationSettings: const LocationSettings(
+                                  accuracy: LocationAccuracy.high,
+                                ),
                               );
                               lat = pos.latitude;
                               lng = pos.longitude;

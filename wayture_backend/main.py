@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from routers import auth, prediction, reports, notifications, traffic, ratings, maps
+from routers import auth, prediction, reports, notifications, traffic, ratings, maps, simple_routes
 from services.firebase_service import firebase_service
 from services.groq_service import groq_service
 from services.maps_service import maps_service
@@ -96,6 +96,9 @@ app.include_router(ratings.router, prefix="/ratings", tags=["Ratings"])
 # maps router keeps /route at the top level (for Flutter backward-compat)
 # and exposes /maps/test for operator smoke tests.
 app.include_router(maps.router, tags=["Maps"])
+# Simple Find Routes demo endpoint — separate prefix so it never collides
+# with the existing /route endpoint used by the main app.
+app.include_router(simple_routes.router, prefix="/api/simple", tags=["Simple Routes"])
 
 
 @app.get("/")

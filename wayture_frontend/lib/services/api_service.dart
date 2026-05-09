@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:wayture/models/notification_model.dart';
 import 'package:wayture/models/report_model.dart';
+import 'package:wayture/models/simple_route.dart';
 
 /// Single file that handles ALL backend communication.
 /// Base URL points to FastAPI server (port 8000).
@@ -593,5 +594,40 @@ class ApiService {
       default:
         return NotificationType.trafficAlert;
     }
+  }
+
+  // ── Find Routes (demo endpoint) ──────────────────────────────────────────
+  //
+  // Calls GET /api/simple/find-routes and returns a parsed response.
+  // Throws with a user-friendly message on failure so the screen can show
+  // it in a SnackBar — no silent nulls here, because this feature is the
+  // whole point of the Find Routes screen.
+
+  static Future<SimpleRoutesResponse> findSimpleRoutes({
+    required String origin,
+    required String destination,
+  }) async {
+    // Build the URL with properly URL-encoded query params.
+    final uri = Uri.parse('$_baseUrl/api/simple/find-routes').replace(
+      queryParameters: {
+        'origin': origin,
+        'destination': destination,
+      },
+    );
+
+    final response = await http.get(uri).timeout(_timeout);
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      return SimpleRoutesResponse.fromJson(data);
+    }
+
+    // Try to surface the backend's error message if present.
+    String message = 'Could not find routes. Please try again.';
+    try {
+      final err = jsonDecode(response.body) as Map<String, dynamic>;
+      if (err['detail'] is String) message = err['detail'] as String;
+    } catch (_) {}
+    throw Exception(message);
   }
 }

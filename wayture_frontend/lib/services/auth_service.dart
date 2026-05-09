@@ -57,26 +57,32 @@ class AuthService extends ChangeNotifier {
 
   Future<String?> signInWithGoogle() async {
     try {
-      final googleSignIn = GoogleSignIn(
-        scopes: ['email', 'profile'],
-      );
+      // v7 uses a singleton; initialize() is idempotent.
+      await GoogleSignIn.instance.initialize();
 
-      // Sign out first so the account chooser always appears,
-      // letting the user pick which Google account to use.
-      await googleSignIn.signOut();
+      // Force account chooser by clearing any cached sign-in.
+      await GoogleSignIn.instance.signOut();
 
-      final googleUser = await googleSignIn.signIn();
-      if (googleUser == null) return 'Sign-in cancelled';
+      final googleUser = await GoogleSignIn.instance.authenticate();
 
-      final googleAuth = await googleUser.authentication;
+      final googleAuth = googleUser.authentication;
+      final authorization = await googleUser.authorizationClient
+          .authorizationForScopes(const ['email', 'profile']);
+
       final credential = GoogleAuthProvider.credential(
-        accessToken: googleAuth.accessToken,
+        accessToken: authorization?.accessToken,
         idToken: googleAuth.idToken,
       );
 
       await _auth.signInWithCredential(credential);
       notifyListeners();
       return null;
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        return 'Sign-in cancelled';
+      }
+      debugPrint('Google sign-in exception: ${e.code} ${e.description}');
+      return 'Google sign-in failed';
     } on FirebaseAuthException catch (e) {
       debugPrint('Google sign-in FirebaseAuthException: ${e.code} ${e.message}');
       return _mapError(e.code);
@@ -98,7 +104,7 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signOut() async {
-    try { await GoogleSignIn().signOut(); } catch (_) {}
+    try { await GoogleSignIn.instance.signOut(); } catch (_) {}
     try { await _auth.signOut(); } catch (_) {}
     _useDemoMode = false;
     _demoName = '';

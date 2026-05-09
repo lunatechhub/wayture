@@ -125,11 +125,11 @@ class LocationService {
     }
 
     try {
-      // geolocator 11.x still uses the old-style named parameters here —
-      // `locationSettings` was only added to getCurrentPosition in v12.
       final pos = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        timeLimit: timeout,
+        locationSettings: LocationSettings(
+          accuracy: LocationAccuracy.high,
+          timeLimit: timeout,
+        ),
       );
 
       String? address;

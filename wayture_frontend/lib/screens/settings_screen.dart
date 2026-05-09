@@ -4,7 +4,6 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:wayture/config/constants.dart';
 import 'package:wayture/config/theme.dart';
@@ -56,7 +55,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Icons.route_outlined,
     Icons.map_outlined,
   ];
-  final _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -86,8 +84,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       setState(() {
         _notificationsEnabled =
             data['notificationsEnabled'] as bool? ?? _notificationsEnabled;
-        _selectedLanguage =
-            data['language'] as String? ?? _selectedLanguage;
+        _selectedLanguage = data['language'] as String? ?? _selectedLanguage;
         // Rating is stored in the same settings doc so it reuses the
         // already-deployed settings rules (no separate collection needed).
         _currentRating = (data['rating'] as num?)?.toInt() ?? 0;
@@ -137,8 +134,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final myRating = await FirestoreService.instance.getUserRating(uid);
         if (myRating != null && mounted) {
           setState(() {
-            _currentRating = (myRating['stars'] as num?)?.toInt() ?? _currentRating;
-            _currentFeedback = myRating['feedback'] as String? ?? _currentFeedback;
+            _currentRating =
+                (myRating['stars'] as num?)?.toInt() ?? _currentRating;
+            _currentFeedback =
+                myRating['feedback'] as String? ?? _currentFeedback;
           });
         }
       }
@@ -152,8 +151,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final uid = _uid;
     if (uid == null) return;
     try {
-      final count =
-          await FirestoreService.instance.getSavedRoutesCount(uid);
+      final count = await FirestoreService.instance.getSavedRoutesCount(uid);
       if (!mounted) return;
       setState(() => _savedRoutesCount = count);
     } catch (e) {
@@ -163,8 +161,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── Helpers ──────────────────────────────────────────────
 
-  String _getDisplayName(AuthService auth) =>
-      _profileName ?? auth.displayName;
+  String _getDisplayName(AuthService auth) => _profileName ?? auth.displayName;
 
   String _getDisplayEmail(AuthService auth) =>
       _profileEmail ?? auth.displayEmail;
@@ -185,98 +182,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   // ── Profile Image Picker ────────────────────────────────
 
-  void _showImageSourcePicker(StateSetter sheetSetState) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => Container(
-        decoration: BoxDecoration(
-          color: Colors.black.withAlpha(217),
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 40,
-              height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
-              decoration: BoxDecoration(
-                color: Colors.white38,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const Text(
-              'Change Profile Photo',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              leading: const Icon(Icons.camera_alt, color: AppColors.primary),
-              title: const Text('Take a Photo',
-                  style: TextStyle(color: Colors.white, fontSize: 15)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickImage(ImageSource.camera, sheetSetState);
-              },
-            ),
-            const Divider(color: Colors.white12),
-            ListTile(
-              leading: const Icon(Icons.photo_library, color: AppColors.primary),
-              title: const Text('Choose from Gallery',
-                  style: TextStyle(color: Colors.white, fontSize: 15)),
-              onTap: () {
-                Navigator.pop(ctx);
-                _pickImage(ImageSource.gallery, sheetSetState);
-              },
-            ),
-            if (_profileImage != null) ...[
-              const Divider(color: Colors.white12),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                title: const Text('Remove Photo',
-                    style: TextStyle(color: Colors.redAccent, fontSize: 15)),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  if (mounted) setState(() => _profileImage = null);
-                  sheetSetState(() {});
-                  _showSnackBar('Profile photo removed');
-                },
-              ),
-            ],
-            const SizedBox(height: 10),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _pickImage(ImageSource source, StateSetter sheetSetState) async {
-    try {
-      final picked = await _imagePicker.pickImage(
-        source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 80,
-      );
-      if (picked != null && mounted) {
-        setState(() => _profileImage = File(picked.path));
-        sheetSetState(() {});
-        _showSnackBar('Profile photo updated');
-      }
-    } catch (e) {
-      _showSnackBar('Could not access ${source == ImageSource.camera ? "camera" : "gallery"}');
-    }
-  }
-
-  // ── FEATURE 5: Language Picker ──────────────────────────
-
   void _showLanguagePicker() {
     showModalBottomSheet(
       context: context,
@@ -284,8 +189,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: Colors.black.withAlpha(217),
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -322,8 +226,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _languageTile(BuildContext ctx, String language) {
     final isSelected = _selectedLanguage == language;
     return ListTile(
-      title: Text(language,
-          style: const TextStyle(color: Colors.white, fontSize: 15)),
+      title: Text(
+        language,
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+      ),
       trailing: isSelected
           ? const Icon(Icons.check_circle, color: AppColors.primary)
           : const Icon(Icons.radio_button_unchecked, color: Colors.white38),
@@ -343,10 +249,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final uid = _uid;
     if (uid == null) return;
     try {
-      await FirebaseFirestore.instance
-          .collection('Settings')
-          .doc(uid)
-          .set({
+      await FirebaseFirestore.instance.collection('Settings').doc(uid).set({
         key: value,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
@@ -441,8 +344,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Center(
                   child: Text(
                     'Version ${AppConstants.appVersion}',
-                    style: const TextStyle(
-                        color: Colors.white60, fontSize: 13),
+                    style: const TextStyle(color: Colors.white60, fontSize: 13),
                   ),
                 ),
                 const SizedBox(height: 10),
@@ -471,15 +373,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   runSpacing: 8,
                   children: const [
                     _PoweredByChip(
-                        icon: Icons.map_outlined, label: 'OpenStreetMap'),
+                      icon: Icons.map_outlined,
+                      label: 'OpenStreetMap',
+                    ),
                     _PoweredByChip(
-                        icon: Icons.alt_route, label: 'OSRM Routing'),
+                      icon: Icons.alt_route,
+                      label: 'OSRM Routing',
+                    ),
                     _PoweredByChip(
-                        icon: Icons.cloud_outlined, label: 'Open-Meteo'),
+                      icon: Icons.cloud_outlined,
+                      label: 'Open-Meteo',
+                    ),
                     _PoweredByChip(
-                        icon: Icons.storage_outlined, label: 'Firebase'),
+                      icon: Icons.storage_outlined,
+                      label: 'Firebase',
+                    ),
                     _PoweredByChip(
-                        icon: Icons.psychology_outlined, label: 'Groq AI'),
+                      icon: Icons.psychology_outlined,
+                      label: 'Groq AI',
+                    ),
                   ],
                 ),
                 const SizedBox(height: 24),
@@ -504,20 +416,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   child: Column(
                     children: const [
                       _InfoRow(
-                          icon: Icons.school_outlined,
-                          text: 'BSc Final Year Project'),
+                        icon: Icons.school_outlined,
+                        text: 'BSc Final Year Project',
+                      ),
                       SizedBox(height: 10),
                       _InfoRow(
-                          icon: Icons.location_city,
-                          text: 'University of Bedfordshire'),
+                        icon: Icons.location_city,
+                        text: 'University of Bedfordshire',
+                      ),
                       SizedBox(height: 10),
                       _InfoRow(
-                          icon: Icons.person_outlined,
-                          text: 'Student: Luna Bhattarai'),
+                        icon: Icons.person_outlined,
+                        text: 'Student: Luna Bhattarai',
+                      ),
                       SizedBox(height: 10),
                       _InfoRow(
-                          icon: Icons.supervisor_account,
-                          text: 'Supervisor: Pawan KC'),
+                        icon: Icons.supervisor_account,
+                        text: 'Supervisor: Pawan KC',
+                      ),
                     ],
                   ),
                 ),
@@ -539,10 +455,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           Navigator.pop(ctx);
                           _showPrivacyPolicy();
                         },
-                        icon: const Icon(Icons.privacy_tip_outlined,
-                            size: 18),
-                        label: const Text('Privacy Policy',
-                            style: TextStyle(fontSize: 12)),
+                        icon: const Icon(Icons.privacy_tip_outlined, size: 18),
+                        label: const Text(
+                          'Privacy Policy',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                     const SizedBox(width: 10),
@@ -560,8 +477,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _showTermsOfService();
                         },
                         icon: const Icon(Icons.article_outlined, size: 18),
-                        label: const Text('Terms of Service',
-                            style: TextStyle(fontSize: 12)),
+                        label: const Text(
+                          'Terms of Service',
+                          style: TextStyle(fontSize: 12),
+                        ),
                       ),
                     ),
                   ],
@@ -615,16 +534,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ScaffoldMessenger.of(context)
                         ..clearSnackBars()
                         ..showSnackBar(
-                          const SnackBar(
-                            content: Text('Sharing coming soon!'),
-                          ),
+                          const SnackBar(content: Text('Sharing coming soon!')),
                         );
                     },
                     icon: const Icon(Icons.share, size: 18),
                     label: const Text(
                       'Share Wayture',
                       style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w600),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
                 ),
@@ -662,8 +581,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close',
-                style: TextStyle(color: Color(0xFF00897B))),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Color(0xFF00897B)),
+            ),
           ),
         ],
       ),
@@ -688,8 +609,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('Close',
-                style: TextStyle(color: Color(0xFF00897B))),
+            child: const Text(
+              'Close',
+              style: TextStyle(color: Color(0xFF00897B)),
+            ),
           ),
         ],
       ),
@@ -762,8 +685,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (ctx) => Container(
         decoration: BoxDecoration(
           color: Colors.black.withAlpha(217),
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
@@ -816,10 +738,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Widget _helpTile(IconData icon, String title, VoidCallback onTap) {
     return ListTile(
       leading: Icon(icon, color: AppColors.primary),
-      title: Text(title,
-          style: const TextStyle(color: Colors.white, fontSize: 15)),
-      trailing:
-          const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
+      title: Text(
+        title,
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right,
+        color: Colors.white38,
+        size: 20,
+      ),
       onTap: onTap,
     );
   }
@@ -864,8 +791,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         builder: (_, scrollController) => Container(
           decoration: BoxDecoration(
             color: Colors.black.withAlpha(217),
-            borderRadius:
-                const BorderRadius.vertical(top: Radius.circular(20)),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           ),
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -934,110 +860,116 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool submitting = false;
 
     try {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, sheetSetState) => Padding(
-          padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(217),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, sheetSetState) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
             ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white38,
-                    borderRadius: BorderRadius.circular(2),
-                  ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(217),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
                 ),
-                const Text(
-                  'Report a Bug',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                CustomTextField(
-                  controller: bugCtrl,
-                  hintText: 'Describe the bug...',
-                  maxLines: 4,
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white38,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    onPressed: submitting
-                        ? null
-                        : () async {
-                            final text = bugCtrl.text.trim();
-                            if (text.isEmpty) {
-                              _showSnackBar('Please describe the bug first');
-                              return;
-                            }
-                            sheetSetState(() => submitting = true);
-
-                            // Persist to Firestore bugReports collection
-                            final uid = _uid;
-                            try {
-                              await FirebaseFirestore.instance
-                                  .collection('bugReports')
-                                  .add({
-                                'userid': uid ?? 'anonymous',
-                                'description': text,
-                                'appVersion': AppConstants.appVersion,
-                                'createdAt':
-                                    FieldValue.serverTimestamp(),
-                              });
-                            } catch (e) {
-                              debugPrint('bug report save error: $e');
-                            }
-
-                            if (!ctx.mounted) return;
-                            Navigator.pop(ctx);
-                            _showSnackBar(
-                                'Bug report submitted. Thank you!');
-                          },
-                    child: submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          )
-                        : const Text('Submit',
-                            style: TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.w600)),
                   ),
-                ),
-                const SizedBox(height: 10),
-              ],
+                  const Text(
+                    'Report a Bug',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  CustomTextField(
+                    controller: bugCtrl,
+                    hintText: 'Describe the bug...',
+                    maxLines: 4,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: submitting
+                          ? null
+                          : () async {
+                              final text = bugCtrl.text.trim();
+                              if (text.isEmpty) {
+                                _showSnackBar('Please describe the bug first');
+                                return;
+                              }
+                              sheetSetState(() => submitting = true);
+
+                              // Persist to Firestore bugReports collection
+                              final uid = _uid;
+                              try {
+                                await FirebaseFirestore.instance
+                                    .collection('bugReports')
+                                    .add({
+                                      'userid': uid ?? 'anonymous',
+                                      'description': text,
+                                      'appVersion': AppConstants.appVersion,
+                                      'createdAt': FieldValue.serverTimestamp(),
+                                    });
+                              } catch (e) {
+                                debugPrint('bug report save error: $e');
+                              }
+
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              _showSnackBar('Bug report submitted. Thank you!');
+                            },
+                      child: submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : const Text(
+                              'Submit',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
     } finally {
       bugCtrl.dispose();
     }
@@ -1054,15 +986,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (_) => Container(
         decoration: BoxDecoration(
           color: Colors.black.withAlpha(217),
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Container(
-              width: 40, height: 4,
+              width: 40,
+              height: 4,
               margin: const EdgeInsets.only(bottom: 20),
               decoration: BoxDecoration(
                 color: Colors.white38,
@@ -1074,12 +1006,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
               children: [
                 Icon(Icons.email_outlined, color: AppColors.primary),
                 SizedBox(width: 10),
-                Text('Contact Support',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    )),
+                Text(
+                  'Contact Support',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 16),
@@ -1117,12 +1051,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   backgroundColor: AppColors.primary,
                   foregroundColor: Colors.white,
                   shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12)),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
                   elevation: 0,
                 ),
                 onPressed: () async {
                   await Clipboard.setData(
-                      const ClipboardData(text: supportEmail));
+                    const ClipboardData(text: supportEmail),
+                  );
                   if (!mounted) return;
                   Navigator.pop(context);
                   _showSnackBar('Email copied to clipboard');
@@ -1146,157 +1082,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
     bool submitting = false;
 
     try {
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, sheetSetState) => Padding(
-          padding:
-              EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withAlpha(230),
-              borderRadius:
-                  const BorderRadius.vertical(top: Radius.circular(20)),
+      await showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (ctx) => StatefulBuilder(
+          builder: (ctx, sheetSetState) => Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.of(ctx).viewInsets.bottom,
             ),
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Handle
-                Container(
-                  width: 40,
-                  height: 4,
-                  margin: const EdgeInsets.only(bottom: 20),
-                  decoration: BoxDecoration(
-                    color: Colors.white38,
-                    borderRadius: BorderRadius.circular(2),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withAlpha(230),
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(20),
+                ),
+              ),
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // Handle
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 20),
+                    decoration: BoxDecoration(
+                      color: Colors.white38,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                ),
-                const Text(
-                  'Rate Wayture',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
+                  const Text(
+                    'Rate Wayture',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _currentRating > 0
-                      ? 'You rated $_currentRating★ last time — tap to update'
-                      : 'Help us improve the app',
-                  style: const TextStyle(
-                      color: Colors.white60, fontSize: 13),
-                ),
-                const SizedBox(height: 24),
+                  const SizedBox(height: 6),
+                  Text(
+                    _currentRating > 0
+                        ? 'You rated $_currentRating★ last time — tap to update'
+                        : 'Help us improve the app',
+                    style: const TextStyle(color: Colors.white60, fontSize: 13),
+                  ),
+                  const SizedBox(height: 24),
 
-                // Star row
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (i) {
-                    final index = i + 1;
-                    final filled = index <= stars;
-                    return GestureDetector(
-                      onTap: () => sheetSetState(() => stars = index),
-                      behavior: HitTestBehavior.opaque,
-                      child: Padding(
-                        padding:
-                            const EdgeInsets.symmetric(horizontal: 4),
-                        child: AnimatedSwitcher(
-                          duration: const Duration(milliseconds: 150),
-                          child: Icon(
-                            filled ? Icons.star : Icons.star_border,
-                            key: ValueKey('$index-$filled'),
-                            color: filled
-                                ? Colors.amber
-                                : Colors.white38,
-                            size: 44,
+                  // Star row
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(5, (i) {
+                      final index = i + 1;
+                      final filled = index <= stars;
+                      return GestureDetector(
+                        onTap: () => sheetSetState(() => stars = index),
+                        behavior: HitTestBehavior.opaque,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: AnimatedSwitcher(
+                            duration: const Duration(milliseconds: 150),
+                            child: Icon(
+                              filled ? Icons.star : Icons.star_border,
+                              key: ValueKey('$index-$filled'),
+                              color: filled ? Colors.amber : Colors.white38,
+                              size: 44,
+                            ),
                           ),
                         ),
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _labelForStars(stars),
-                  style: TextStyle(
-                    color: stars == 0
-                        ? Colors.white38
-                        : Colors.amber.shade300,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w500,
+                      );
+                    }),
                   ),
-                ),
-                const SizedBox(height: 20),
-
-                // Feedback textarea
-                CustomTextField(
-                  controller: feedbackCtrl,
-                  hintText: 'Tell us what you think (optional)',
-                  maxLines: 3,
-                ),
-                const SizedBox(height: 20),
-
-                // Submit button
-                SizedBox(
-                  width: double.infinity,
-                  height: 48,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: stars > 0
-                          ? AppColors.primary
-                          : Colors.white.withAlpha(30),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14)),
-                      elevation: 0,
+                  const SizedBox(height: 10),
+                  Text(
+                    _labelForStars(stars),
+                    style: TextStyle(
+                      color: stars == 0
+                          ? Colors.white38
+                          : Colors.amber.shade300,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
                     ),
-                    onPressed: (stars == 0 || submitting)
-                        ? null
-                        : () async {
-                            sheetSetState(() => submitting = true);
-                            final error = await _submitRating(
-                              stars: stars,
-                              feedback: feedbackCtrl.text.trim(),
-                            );
-                            if (!ctx.mounted) return;
-                            Navigator.pop(ctx);
-                            _showSnackBar(error ??
-                                'Thanks for rating Wayture $stars★!');
-                          },
-                    child: submitting
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                                color: Colors.white, strokeWidth: 2),
-                          )
-                        : Text(
-                            _currentRating > 0
-                                ? 'Update Rating'
-                                : 'Submit Rating',
-                            style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600),
-                          ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const Text('Cancel',
-                      style:
-                          TextStyle(color: Colors.white60, fontSize: 14)),
-                ),
-              ],
+                  const SizedBox(height: 20),
+
+                  // Feedback textarea
+                  CustomTextField(
+                    controller: feedbackCtrl,
+                    hintText: 'Tell us what you think (optional)',
+                    maxLines: 3,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Submit button
+                  SizedBox(
+                    width: double.infinity,
+                    height: 48,
+                    child: ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: stars > 0
+                            ? AppColors.primary
+                            : Colors.white.withAlpha(30),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                      ),
+                      onPressed: (stars == 0 || submitting)
+                          ? null
+                          : () async {
+                              sheetSetState(() => submitting = true);
+                              final error = await _submitRating(
+                                stars: stars,
+                                feedback: feedbackCtrl.text.trim(),
+                              );
+                              if (!ctx.mounted) return;
+                              Navigator.pop(ctx);
+                              _showSnackBar(
+                                error ?? 'Thanks for rating Wayture $stars★!',
+                              );
+                            },
+                      child: submitting
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(
+                                color: Colors.white,
+                                strokeWidth: 2,
+                              ),
+                            )
+                          : Text(
+                              _currentRating > 0
+                                  ? 'Update Rating'
+                                  : 'Submit Rating',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    child: const Text(
+                      'Cancel',
+                      style: TextStyle(color: Colors.white60, fontSize: 14),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
-      ),
-    );
+      );
     } finally {
       feedbackCtrl.dispose();
     }
@@ -1342,10 +1282,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final now = FieldValue.serverTimestamp();
 
       // 1. Write to appRatings/{uid} (main ratings collection)
-      await FirebaseFirestore.instance
-          .collection('appRatings')
-          .doc(uid)
-          .set({
+      await FirebaseFirestore.instance.collection('appRatings').doc(uid).set({
         'uid': uid,
         'stars': stars,
         'feedback': feedback,
@@ -1355,10 +1292,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }, SetOptions(merge: true));
 
       // 2. Write to settings/{uid} (backup for settings screen)
-      await FirebaseFirestore.instance
-          .collection('Settings')
-          .doc(uid)
-          .set({
+      await FirebaseFirestore.instance.collection('Settings').doc(uid).set({
         'rating': stars,
         'ratingFeedback': feedback,
         'updatedAt': now,
@@ -1379,7 +1313,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadRatingSummary();
       return null; // success
     } on FirebaseException catch (e) {
-      debugPrint('rating FirebaseException: code=${e.code} message=${e.message}');
+      debugPrint(
+        'rating FirebaseException: code=${e.code} message=${e.message}',
+      );
       return 'Firestore error: ${e.message ?? e.code}';
     } catch (e) {
       debugPrint('rating error: $e');
@@ -1487,13 +1423,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: const TextStyle(
-                                    color: Colors.white60, fontSize: 13),
+                                  color: Colors.white60,
+                                  fontSize: 13,
+                                ),
                               ),
                               const SizedBox(height: 4),
                               Row(
                                 children: [
-                                  const Icon(Icons.bookmark,
-                                      color: AppColors.primary, size: 14),
+                                  const Icon(
+                                    Icons.bookmark,
+                                    color: AppColors.primary,
+                                    size: 14,
+                                  ),
                                   const SizedBox(width: 4),
                                   Text(
                                     '$_savedRoutesCount saved route${_savedRoutesCount == 1 ? '' : 's'}',
@@ -1511,12 +1452,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: () => Navigator.push(
                             context,
                             MaterialPageRoute(
-                                builder: (_) => const ProfileScreen()),
+                              builder: (_) => const ProfileScreen(),
+                            ),
                           ),
                           child: const Text(
                             'Edit Profile',
                             style: TextStyle(
-                                color: AppColors.primary, fontSize: 13),
+                              color: AppColors.primary,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       ],
@@ -1539,30 +1483,35 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 14),
                         // Map display toggle chips
-                        const Text('Map Display',
-                            style: TextStyle(
-                                color: Colors.white60, fontSize: 13)),
+                        const Text(
+                          'Map Display',
+                          style: TextStyle(color: Colors.white60, fontSize: 13),
+                        ),
                         const SizedBox(height: 8),
                         // Wrap (instead of Row) so chips flow to a second
                         // line on narrow phones instead of overflowing.
                         Wrap(
                           spacing: 8,
                           runSpacing: 8,
-                          children: List.generate(
-                              _mapDisplayOptions.length, (i) {
+                          children: List.generate(_mapDisplayOptions.length, (
+                            i,
+                          ) {
                             final isSelected = mapDisplayIndex == i;
                             return GestureDetector(
                               onTap: () {
                                 themeSvc.setMapDisplayMode(
-                                    MapDisplayMode.values[i]);
+                                  MapDisplayMode.values[i],
+                                );
                                 _showSnackBar(
-                                    'Map display set to ${_mapDisplayOptions[i]}');
+                                  'Map display set to ${_mapDisplayOptions[i]}',
+                                );
                               },
                               child: AnimatedContainer(
-                                duration:
-                                    const Duration(milliseconds: 200),
+                                duration: const Duration(milliseconds: 200),
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 7),
+                                  horizontal: 12,
+                                  vertical: 7,
+                                ),
                                 decoration: BoxDecoration(
                                   color: isSelected
                                       ? AppColors.primary
@@ -1609,32 +1558,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: Text(
                             _mapDisplayDescriptions[mapDisplayIndex],
                             style: const TextStyle(
-                                color: Colors.white38, fontSize: 11),
+                              color: Colors.white38,
+                              fontSize: 11,
+                            ),
                           ),
                         ),
                         const SizedBox(height: 14),
                         // Dark mode toggle
-                        _toggleRow(
-                          'Dark Mode',
-                          isDark,
-                          (v) {
-                            themeSvc.toggleDarkMode(v);
-                            _showSnackBar(
-                                'Dark mode ${v ? "enabled" : "disabled"}');
-                          },
-                        ),
+                        _toggleRow('Dark Mode', isDark, (v) {
+                          themeSvc.toggleDarkMode(v);
+                          _showSnackBar(
+                            'Dark mode ${v ? "enabled" : "disabled"}',
+                          );
+                        }),
                         const Divider(color: Colors.white12, height: 20),
                         // Notifications toggle (persisted to settings/{uid})
-                        _toggleRow(
-                          'Notifications',
-                          _notificationsEnabled,
-                          (v) async {
-                            if (mounted) setState(() => _notificationsEnabled = v);
-                            await _saveSetting('notificationsEnabled', v);
-                            _showSnackBar(
-                                'Notifications ${v ? "enabled" : "disabled"}');
-                          },
-                        ),
+                        _toggleRow('Notifications', _notificationsEnabled, (
+                          v,
+                        ) async {
+                          if (mounted) {
+                            setState(() => _notificationsEnabled = v);
+                          }
+                          await _saveSetting('notificationsEnabled', v);
+                          _showSnackBar(
+                            'Notifications ${v ? "enabled" : "disabled"}',
+                          );
+                        }),
                       ],
                     ),
                   ),
@@ -1659,7 +1608,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             if (_ratingsLoaded && _totalRatings > 0)
                               Container(
                                 padding: const EdgeInsets.symmetric(
-                                    horizontal: 8, vertical: 3),
+                                  horizontal: 8,
+                                  vertical: 3,
+                                ),
                                 decoration: BoxDecoration(
                                   color: Colors.amber.withAlpha(30),
                                   borderRadius: BorderRadius.circular(10),
@@ -1694,14 +1645,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 children: List.generate(5, (i) {
                                   final starVal = i + 1;
                                   if (starVal <= _averageRating.floor()) {
-                                    return const Icon(Icons.star,
-                                        color: Colors.amber, size: 20);
+                                    return const Icon(
+                                      Icons.star,
+                                      color: Colors.amber,
+                                      size: 20,
+                                    );
                                   } else if (starVal - _averageRating < 1) {
-                                    return const Icon(Icons.star_half,
-                                        color: Colors.amber, size: 20);
+                                    return const Icon(
+                                      Icons.star_half,
+                                      color: Colors.amber,
+                                      size: 20,
+                                    );
                                   } else {
-                                    return const Icon(Icons.star_border,
-                                        color: Colors.white24, size: 20);
+                                    return const Icon(
+                                      Icons.star_border,
+                                      color: Colors.white24,
+                                      size: 20,
+                                    );
                                   }
                                 }),
                               ),
@@ -1709,7 +1669,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Text(
                                 'avg',
                                 style: TextStyle(
-                                    color: Colors.white38, fontSize: 12),
+                                  color: Colors.white38,
+                                  fontSize: 12,
+                                ),
                               ),
                             ],
                           ),
@@ -1719,9 +1681,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         // User's own rating
                         Row(
                           children: [
-                            const Text('Your rating: ',
-                                style: TextStyle(
-                                    color: Colors.white60, fontSize: 13)),
+                            const Text(
+                              'Your rating: ',
+                              style: TextStyle(
+                                color: Colors.white60,
+                                fontSize: 13,
+                              ),
+                            ),
                             if (_currentRating > 0)
                               Row(
                                 children: List.generate(
@@ -1738,18 +1704,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 ),
                               )
                             else
-                              const Text('Not rated yet',
-                                  style: TextStyle(
-                                      color: Colors.white38, fontSize: 13)),
+                              const Text(
+                                'Not rated yet',
+                                style: TextStyle(
+                                  color: Colors.white38,
+                                  fontSize: 13,
+                                ),
+                              ),
                             const Spacer(),
                             GestureDetector(
                               onTap: _showRatingSheet,
                               child: Text(
-                                _currentRating > 0
-                                    ? 'Update'
-                                    : 'Rate Now',
+                                _currentRating > 0 ? 'Update' : 'Rate Now',
                                 style: const TextStyle(
-                                    color: AppColors.primary, fontSize: 13),
+                                  color: AppColors.primary,
+                                  fontSize: 13,
+                                ),
                               ),
                             ),
                           ],
@@ -1789,10 +1759,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ),
                         const SizedBox(height: 14),
                         _settingsRow(
-                            'Language', _selectedLanguage, _showLanguagePicker),
+                          'Language',
+                          _selectedLanguage,
+                          _showLanguagePicker,
+                        ),
                         const Divider(color: Colors.white12, height: 20),
-                        _settingsRow(
-                            'About Wayture', '', _showAboutWayture),
+                        _settingsRow('About Wayture', '', _showAboutWayture),
                         const Divider(color: Colors.white12, height: 20),
                         _iconSettingsRow(
                           icon: Icons.privacy_tip_outlined,
@@ -1806,7 +1778,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           onTap: _showWhatsNew,
                           trailing: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 2),
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
                             decoration: BoxDecoration(
                               color: const Color(0xFF00897B),
                               borderRadius: BorderRadius.circular(8),
@@ -1822,8 +1796,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           ),
                         ),
                         const Divider(color: Colors.white12, height: 20),
-                        _settingsRow(
-                            'Help & Support', '', _showHelpSupport),
+                        _settingsRow('Help & Support', '', _showHelpSupport),
                       ],
                     ),
                   ),
@@ -1845,35 +1818,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onPressed: () {
                           ScaffoldMessenger.of(context)
                             ..clearSnackBars()
-                            ..showSnackBar(SnackBar(
-                              content: const Row(children: [
-                                Icon(Icons.logout_rounded,
-                                    color: Colors.white, size: 20),
-                                SizedBox(width: 10),
-                                Text('Log out of Wayture?',
-                                    style: TextStyle(color: Colors.white)),
-                              ]),
-                              backgroundColor: const Color(0xFF1A1A2E),
-                              behavior: SnackBarBehavior.floating,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12)),
-                              duration: const Duration(seconds: 4),
-                              action: SnackBarAction(
-                                label: 'LOG OUT',
-                                textColor: Colors.redAccent,
-                                onPressed: () async {
-                                  final rootNav = Navigator.of(
-                                      context, rootNavigator: true);
-                                  await auth.signOut();
-                                  rootNav.pushAndRemoveUntil(
-                                    MaterialPageRoute(
-                                        builder: (_) =>
-                                            const LoginScreen()),
-                                    (route) => false,
-                                  );
-                                },
+                            ..showSnackBar(
+                              SnackBar(
+                                content: const Row(
+                                  children: [
+                                    Icon(
+                                      Icons.logout_rounded,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      'Log out of Wayture?',
+                                      style: TextStyle(color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                                backgroundColor: const Color(0xFF1A1A2E),
+                                behavior: SnackBarBehavior.floating,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                duration: const Duration(seconds: 4),
+                                action: SnackBarAction(
+                                  label: 'LOG OUT',
+                                  textColor: Colors.redAccent,
+                                  onPressed: () async {
+                                    final rootNav = Navigator.of(
+                                      context,
+                                      rootNavigator: true,
+                                    );
+                                    await auth.signOut();
+                                    rootNav.pushAndRemoveUntil(
+                                      MaterialPageRoute(
+                                        builder: (_) => const LoginScreen(),
+                                      ),
+                                      (route) => false,
+                                    );
+                                  },
+                                ),
                               ),
-                            ));
+                            );
                         },
                         child: const Text(
                           'Log Out',
@@ -1922,8 +1907,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(label,
-            style: const TextStyle(color: Colors.white, fontSize: 14)),
+        Text(label, style: const TextStyle(color: Colors.white, fontSize: 14)),
         Switch(
           value: value,
           onChanged: onChanged,
@@ -1941,18 +1925,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label,
-              style: const TextStyle(color: Colors.white, fontSize: 14)),
+          Text(
+            label,
+            style: const TextStyle(color: Colors.white, fontSize: 14),
+          ),
           Row(
             mainAxisSize: MainAxisSize.min,
             children: [
               if (trailing.isNotEmpty)
-                Text(trailing,
-                    style: const TextStyle(
-                        color: Colors.white54, fontSize: 13)),
+                Text(
+                  trailing,
+                  style: const TextStyle(color: Colors.white54, fontSize: 13),
+                ),
               const SizedBox(width: 4),
-              const Icon(Icons.chevron_right,
-                  color: Colors.white38, size: 20),
+              const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
             ],
           ),
         ],
@@ -1979,10 +1965,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               style: const TextStyle(color: Colors.white, fontSize: 14),
             ),
           ),
-          if (trailing != null) ...[
-            trailing,
-            const SizedBox(width: 4),
-          ],
+          if (trailing != null) ...[trailing, const SizedBox(width: 4)],
           const Icon(Icons.chevron_right, color: Colors.white38, size: 20),
         ],
       ),

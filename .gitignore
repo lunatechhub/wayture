@@ -53,3 +53,8 @@ app.*.map.json
 wayture_backend/venv/
 wayture_backend/__pycache__/
 wayture_backend/firebase_credentials.json
+
+# Release signing — never commit these
+wayture_frontend/android/key.properties
+*.jks
+*.keystore
